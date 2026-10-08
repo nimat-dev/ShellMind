@@ -28,6 +28,24 @@ import {
   SYS_METRICS_MESSAGE_TYPE,
   SysMetricsMessageSchema,
 } from "./messages/sysinfo.js";
+import {
+  AGENT_PROMPT_MESSAGE_TYPE,
+  AgentPromptMessageSchema,
+  AGENT_STREAM_MESSAGE_TYPE,
+  AgentStreamMessageSchema,
+  AGENT_ABORT_MESSAGE_TYPE,
+  AgentAbortMessageSchema,
+} from "./messages/agent.js";
+import {
+  PROJECT_LIST_MESSAGE_TYPE,
+  ProjectListMessageSchema,
+  PROJECT_LIST_RESP_MESSAGE_TYPE,
+  ProjectListRespMessageSchema,
+  PROJECT_SET_MESSAGE_TYPE,
+  ProjectSetMessageSchema,
+  PROJECT_SET_RESP_MESSAGE_TYPE,
+  ProjectSetRespMessageSchema,
+} from "./messages/project.js";
 
 export type AnyMessageSchema = z.ZodTypeAny;
 
@@ -49,6 +67,13 @@ export class MessageRegistry {
     this.register(TERM_EXIT_MESSAGE_TYPE, TermExitMessageSchema);
     this.register(SYS_REQUEST_MESSAGE_TYPE, SysRequestMessageSchema);
     this.register(SYS_METRICS_MESSAGE_TYPE, SysMetricsMessageSchema);
+    this.register(AGENT_PROMPT_MESSAGE_TYPE, AgentPromptMessageSchema);
+    this.register(AGENT_STREAM_MESSAGE_TYPE, AgentStreamMessageSchema);
+    this.register(AGENT_ABORT_MESSAGE_TYPE, AgentAbortMessageSchema);
+    this.register(PROJECT_LIST_MESSAGE_TYPE, ProjectListMessageSchema);
+    this.register(PROJECT_LIST_RESP_MESSAGE_TYPE, ProjectListRespMessageSchema);
+    this.register(PROJECT_SET_MESSAGE_TYPE, ProjectSetMessageSchema);
+    this.register(PROJECT_SET_RESP_MESSAGE_TYPE, ProjectSetRespMessageSchema);
   }
 
   public static getInstance(): MessageRegistry {

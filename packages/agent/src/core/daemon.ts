@@ -8,24 +8,34 @@ import {
   createTermDataMessage,
   createTermExitMessage,
   createSysMetricsMessage,
+  createAgentStreamMessage,
+  createProjectListRespMessage,
+  createProjectSetRespMessage,
   type HelloMessage,
   type PingMessage,
   type TermOpenMessage,
   type TermInputMessage,
   type TermResizeMessage,
   type SysRequestMessage,
+  type AgentPromptMessage,
+  type AgentAbortMessage,
+  type ProjectSetMessage,
   type KnownMessage,
 } from "@shellmind/protocol";
 import type { TransportServer, TransportConnection, TransportListener } from "./transport.js";
 import type { IDeviceRegistry, PairedDevice } from "./device.js";
 import type { ITerminalManager, ITerminalSession } from "./terminal.js";
 import type { ISysInfoProvider } from "./sysinfo.js";
+import type { IClaudeDriver } from "./claude.js";
+import type { IProjectManager } from "./project.js";
 
 export interface AgentDaemonConfig {
   agentVersion: string;
   serverName: string;
   terminalManager?: ITerminalManager;
   sysInfoProvider?: ISysInfoProvider;
+  claudeDriver?: IClaudeDriver;
+  projectManager?: IProjectManager;
 }
 
 export interface AuthenticatedSession {
@@ -184,6 +194,89 @@ export class AgentDaemon {
         );
       }
     });
+
+    this.registerHandler("agent.prompt", async (message, ctx) => {
+      if (!this.config.claudeDriver) {
+        await ctx.send(
+          createErrorMessage({
+            code: "CLAUDE_NOT_SUPPORTED",
+            message: "Claude Code driver is not configured on this agent",
+          })
+        );
+        return;
+      }
+
+      const promptMsg = message as AgentPromptMessage;
+      const targetCwd = promptMsg.payload.cwd ?? (this.config.projectManager ? this.config.projectManager.getCurrentCwd() : undefined);
+
+      await this.config.claudeDriver.runTurn({
+        prompt: promptMsg.payload.prompt,
+        cwd: targetCwd,
+        onEvent: async (event) => {
+          const streamMsg = createAgentStreamMessage(
+            { event },
+            { sessionId: ctx.session.sessionId }
+          );
+          await ctx.send(streamMsg);
+        },
+      });
+    });
+
+    this.registerHandler("agent.abort", async (message, _ctx) => {
+      if (!this.config.claudeDriver) {
+        return;
+      }
+      const abortMsg = message as AgentAbortMessage;
+      await this.config.claudeDriver.abortTurn(abortMsg.payload.reason);
+    });
+
+    this.registerHandler("project.list", async (_message, ctx) => {
+      if (!this.config.projectManager) {
+        await ctx.send(
+          createErrorMessage({
+            code: "PROJECT_MANAGER_NOT_SUPPORTED",
+            message: "Project manager is not configured on this agent",
+          })
+        );
+        return;
+      }
+
+      const currentCwd = this.config.projectManager.getCurrentCwd();
+      const projects = await this.config.projectManager.listProjects();
+      await ctx.send(
+        createProjectListRespMessage(
+          { currentCwd, projects },
+          { sessionId: ctx.session.sessionId }
+        )
+      );
+    });
+
+    this.registerHandler("project.set", async (message, ctx) => {
+      if (!this.config.projectManager) {
+        await ctx.send(
+          createErrorMessage({
+            code: "PROJECT_MANAGER_NOT_SUPPORTED",
+            message: "Project manager is not configured on this agent",
+          })
+        );
+        return;
+      }
+
+      const setMsg = message as ProjectSetMessage;
+      const success = await this.config.projectManager.setCurrentCwd(setMsg.payload.cwd);
+      const currentCwd = this.config.projectManager.getCurrentCwd();
+
+      await ctx.send(
+        createProjectSetRespMessage(
+          {
+            success,
+            currentCwd,
+            error: success ? undefined : "Directory does not exist or is not accessible",
+          },
+          { sessionId: ctx.session.sessionId }
+        )
+      );
+    });
   }
 
   public async start(options: { host: string; port: number }): Promise<TransportListener> {
@@ -199,6 +292,10 @@ export class AgentDaemon {
 
     if (this.config.terminalManager) {
       await this.config.terminalManager.closeAll();
+    }
+
+    if (this.config.claudeDriver) {
+      await this.config.claudeDriver.abortTurn("Daemon stopping");
     }
 
     for (const session of this.activeSessions.values()) {
@@ -227,6 +324,9 @@ export class AgentDaemon {
         if (term) {
           term.kill();
           this.sessionTerminals.delete(state.session.sessionId);
+        }
+        if (this.config.claudeDriver) {
+          void this.config.claudeDriver.abortTurn("Client disconnected");
         }
         this.activeSessions.delete(state.session.sessionId);
       }

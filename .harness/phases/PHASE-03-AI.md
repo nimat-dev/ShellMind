@@ -5,22 +5,22 @@ thin, auditable executor; Claude Code is the brain and owns the tools; the human
 phone. **Gated on Phase 00** — if the spike disproved the thesis, re-plan before starting F007.
 
 ## F007 — Claude driver
-**Status**: NOT STARTED
+**Status**: COMPLETE (PR #8)
 
 ### Acceptance criteria
-- [ ] `claude-driver` adapter spawns `claude -p --output-format stream-json` under the subscription
+- [x] `claude-driver` adapter spawns `claude -p --output-format stream-json` under the subscription
       (no API key), scoped to a `projectCwd`; parses the JSONL stream into `agent.stream` events
-      (`assistant_text`, `tool_use`, `tool_result`, `done`, `aborted`).
-- [ ] `project.list` / `project.set` switch the cwd (phone-switchable); `agent.abort` cancels the
+      (`assistant_text`, `tool_use`, `tool_result`, `done`, `aborted`, `error`).
+- [x] `project.list` / `project.set` switch the cwd (phone-switchable); `agent.abort` cancels the
       current turn and kills the child cleanly.
-- [ ] Edge/error cases: `claude` not installed / not logged in → typed `error` (actionable);
+- [x] Edge/error cases: `claude` not installed / not logged in → typed `error` (actionable);
       malformed JSONL line tolerated; very long stream (backpressure); abort mid-tool; empty prompt;
       process crash surfaced, no zombie.
-- [ ] E2E/integration: prompt "list the files here" → stream shows an `LS`/`Bash` tool_use + a text
+- [x] E2E/integration: prompt "list the files here" → stream shows an `LS`/`Bash` tool_use + a text
       answer, against a seeded project dir. Evidence under `.harness/evidence/F007/`.
-- [ ] Boundary invariants: spawning/parsing only in `adapters/claude-driver/**`; stream event types
+- [x] Boundary invariants: spawning/parsing only in `adapters/claude-driver/**`; stream event types
       defined in `@shellmind/protocol`; `check-architecture` passes.
-- [ ] Verification: full verify green, no regressions.
+- [x] Verification: full verify green, no regressions.
 
 ## F008 — Permission bridge + confirm UI + allowlist + audit log
 **Status**: NOT STARTED — the crown jewel; heaviest edge-case battery.

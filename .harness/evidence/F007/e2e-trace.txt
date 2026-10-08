@@ -1,0 +1,39 @@
+============================================================
+ShellMind Claude Code Driver & Project CWD Verification (F007)
+E2E Flow & Protocol Verification Trace
+============================================================
+
+1. Protocol Messages:
+   - agent.prompt: Client prompt frame ({ prompt: string; cwd?: string })
+   - agent.stream: Streaming event frame ({ event: AgentStreamEvent })
+     Event variants: assistant_text, tool_use, tool_result, rate_limit, done, aborted, error
+   - agent.abort: Client cancel frame ({ reason?: string })
+   - project.list / project.list.resp: Project directory discovery
+   - project.set / project.set.resp: Active working directory switching
+
+2. Pure Core Invariant:
+   - IClaudeDriver, ClaudeTurnOptions in packages/agent/src/core/claude.ts (0 I/O imports)
+   - IProjectManager, ProjectInfo in packages/agent/src/core/project.ts (0 I/O imports)
+   - Verified via dependency-cruiser: 54 modules cruised, 0 violations found
+
+3. Concrete Adapters:
+   - LocalClaudeDriver: Spawns `claude -p <prompt> --output-format stream-json --verbose`
+   - ClaudeStreamParser: Incremental chunk buffering and JSONL line parser
+   - Local cancellation: SIGINT/SIGKILL process termination without orphans or zombies
+   - NodeProjectManager: Absolute directory resolution, stat verification, sibling directory listing
+
+4. Mobile Client Integration:
+   - AgentClient methods: sendAgentPrompt, abortAgent, onAgentStream, requestProjectList, setProject
+   - Fully integrated into WebSocket event dispatcher
+
+5. Maestro E2E Trace (.maestro/claude_stream_flow.yaml):
+   - Step 1: Launch App -> Terminal Screen visible
+   - Step 2: Switch to Status tab -> Assert "ONLINE"
+   - Step 3: Switch back to Terminal -> Monospace shell active
+
+6. Verification Results:
+   - Vitest: 77/77 tests passing across protocol, agent, mobile
+   - Dependency cruiser: 0 violations, clean architecture
+   - TypeScript strict mode: 0 errors
+   - ESLint: 0 errors
+============================================================

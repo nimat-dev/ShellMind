@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
@@ -10,6 +10,10 @@ import {
   createTermInputMessage,
   createTermResizeMessage,
   createSysRequestMessage,
+  createAgentPromptMessage,
+  createAgentAbortMessage,
+  createProjectListMessage,
+  createProjectSetMessage,
   parseMessage,
   serializeMessage,
   type HelloAckMessage,
@@ -18,6 +22,9 @@ import {
   type TermDataMessage,
   type TermExitMessage,
   type SysMetricsMessage,
+  type AgentStreamMessage,
+  type ProjectListRespMessage,
+  type ProjectSetRespMessage,
   type KnownMessage,
 } from "@shellmind/protocol";
 import {
@@ -26,6 +33,9 @@ import {
   FileDeviceRegistry,
   NodePtyManager,
   NodeSysInfoProvider,
+  NodeProjectManager,
+  type IClaudeDriver,
+  type ClaudeTurnOptions,
   isTailnetIp,
 } from "./index.js";
 
@@ -37,6 +47,8 @@ describe("Agent Daemon & Transport Integration", () => {
   let terminalManager: NodePtyManager;
   let daemon: AgentDaemon;
   let serverPort: number;
+  let mockClaudeDriver: IClaudeDriver;
+  let projectManager: NodeProjectManager;
 
   beforeEach(async () => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "shellmind-agent-test-"));
@@ -45,11 +57,23 @@ describe("Agent Daemon & Transport Integration", () => {
     transport = new TailnetTransportServer({ allowLocalhost: true });
     terminalManager = new NodePtyManager();
     const sysInfoProvider = new NodeSysInfoProvider();
+    projectManager = new NodeProjectManager({ initialCwd: tmpDir });
+    mockClaudeDriver = {
+      isBusy: vi.fn().mockReturnValue(false),
+      abortTurn: vi.fn().mockResolvedValue(true),
+      runTurn: vi.fn().mockImplementation(async (opts: ClaudeTurnOptions) => {
+        opts.onEvent({ type: "assistant_text", text: `Echo: ${opts.prompt}` });
+        opts.onEvent({ type: "done", result: "Done", costUsd: 0, durationMs: 50 });
+      }),
+    };
+
     daemon = new AgentDaemon(transport, registry, {
       agentVersion: "0.1.0",
       serverName: "ShellMind Test Daemon",
       terminalManager,
       sysInfoProvider,
+      claudeDriver: mockClaudeDriver,
+      projectManager,
     });
 
     const listener = await daemon.start({ host: "127.0.0.1", port: 0 });
@@ -463,6 +487,177 @@ describe("Agent Daemon & Transport Integration", () => {
       expect(metricsMsg.payload.uptimeSeconds).toBeGreaterThan(0);
 
       ws.close();
+    });
+  });
+
+  describe("Claude Code AI Bridge & Project Management (F007)", () => {
+    it("handles agent.prompt and streams agent.stream events back to client", async () => {
+      const pairing = registry.createPairing("Claude Client");
+      const ws = new WebSocket(`ws://127.0.0.1:${serverPort}`);
+
+      await new Promise<void>((resolve) => ws.on("open", () => resolve()));
+
+      const messages: string[] = [];
+      ws.on("message", (data) => messages.push(data.toString("utf-8")));
+
+      // 1. Authenticate
+      ws.send(
+        serializeMessage(
+          createHelloMessage({
+            deviceId: pairing.device.id,
+            token: pairing.rawToken,
+            clientVersion: "1.0.0",
+            platform: "ios",
+          })
+        )
+      );
+
+      await waitForMessage(
+        messages,
+        (m): m is HelloAckMessage => m.type === "hello.ack"
+      );
+
+      // 2. Send agent.prompt
+      ws.send(
+        serializeMessage(
+          createAgentPromptMessage({
+            prompt: "What is in this repository?",
+          })
+        )
+      );
+
+      // Wait for stream messages
+      const streamText = await waitForMessage(
+        messages,
+        (m): m is AgentStreamMessage =>
+          m.type === "agent.stream" && m.payload.event.type === "assistant_text"
+      );
+
+      expect(streamText.type).toBe("agent.stream");
+      if (streamText.payload.event.type === "assistant_text") {
+        expect(streamText.payload.event.text).toBe("Echo: What is in this repository?");
+      }
+
+      const streamDone = await waitForMessage(
+        messages,
+        (m): m is AgentStreamMessage =>
+          m.type === "agent.stream" && m.payload.event.type === "done"
+      );
+
+      expect(streamDone.type).toBe("agent.stream");
+      expect(mockClaudeDriver.runTurn).toHaveBeenCalledTimes(1);
+
+      ws.close();
+    });
+
+    it("routes agent.abort to driver abortTurn", async () => {
+      const pairing = registry.createPairing("Abort Client");
+      const ws = new WebSocket(`ws://127.0.0.1:${serverPort}`);
+
+      await new Promise<void>((resolve) => ws.on("open", () => resolve()));
+
+      const messages: string[] = [];
+      ws.on("message", (data) => messages.push(data.toString("utf-8")));
+
+      ws.send(
+        serializeMessage(
+          createHelloMessage({
+            deviceId: pairing.device.id,
+            token: pairing.rawToken,
+            clientVersion: "1.0.0",
+            platform: "ios",
+          })
+        )
+      );
+
+      await waitForMessage(
+        messages,
+        (m): m is HelloAckMessage => m.type === "hello.ack"
+      );
+
+      ws.send(serializeMessage(createAgentAbortMessage({ reason: "Stop turn" })));
+      await new Promise((resolve) => setTimeout(resolve, 60));
+
+      expect(mockClaudeDriver.abortTurn).toHaveBeenCalledWith("Stop turn");
+      ws.close();
+    });
+
+    it("handles project.list and project.set requests", async () => {
+      const pairing = registry.createPairing("Project Client");
+      const ws = new WebSocket(`ws://127.0.0.1:${serverPort}`);
+
+      await new Promise<void>((resolve) => ws.on("open", () => resolve()));
+
+      const messages: string[] = [];
+      ws.on("message", (data) => messages.push(data.toString("utf-8")));
+
+      ws.send(
+        serializeMessage(
+          createHelloMessage({
+            deviceId: pairing.device.id,
+            token: pairing.rawToken,
+            clientVersion: "1.0.0",
+            platform: "ios",
+          })
+        )
+      );
+
+      await waitForMessage(
+        messages,
+        (m): m is HelloAckMessage => m.type === "hello.ack"
+      );
+
+      // 1. project.list
+      ws.send(serializeMessage(createProjectListMessage({})));
+
+      const listResp = await waitForMessage(
+        messages,
+        (m): m is ProjectListRespMessage => m.type === "project.list.resp"
+      );
+
+      expect(listResp.type).toBe("project.list.resp");
+      expect(listResp.payload.currentCwd).toBe(tmpDir);
+      expect(listResp.payload.projects.length).toBeGreaterThanOrEqual(1);
+
+      // 2. project.set
+      ws.send(serializeMessage(createProjectSetMessage({ cwd: "/" })));
+
+      const setResp = await waitForMessage(
+        messages,
+        (m): m is ProjectSetRespMessage => m.type === "project.set.resp"
+      );
+
+      expect(setResp.type).toBe("project.set.resp");
+      expect(setResp.payload.success).toBe(true);
+      expect(setResp.payload.currentCwd).toBe("/");
+
+      ws.close();
+    });
+
+    it("aborts active turn on client disconnect (orphan protection)", async () => {
+      const pairing = registry.createPairing("Disconnect Client");
+      const ws = new WebSocket(`ws://127.0.0.1:${serverPort}`);
+
+      await new Promise<void>((resolve) => ws.on("open", () => resolve()));
+
+      ws.send(
+        serializeMessage(
+          createHelloMessage({
+            deviceId: pairing.device.id,
+            token: pairing.rawToken,
+            clientVersion: "1.0.0",
+            platform: "ios",
+          })
+        )
+      );
+
+      await new Promise((resolve) => setTimeout(resolve, 80));
+
+      // Close abruptly
+      ws.close();
+      await new Promise((resolve) => setTimeout(resolve, 80));
+
+      expect(mockClaudeDriver.abortTurn).toHaveBeenCalledWith("Client disconnected");
     });
   });
 });

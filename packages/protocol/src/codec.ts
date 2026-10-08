@@ -18,6 +18,17 @@ import {
   SysRequestMessage,
   SysMetricsMessage,
 } from "./messages/sysinfo.js";
+import {
+  AgentPromptMessage,
+  AgentStreamMessage,
+  AgentAbortMessage,
+} from "./messages/agent.js";
+import {
+  ProjectListMessage,
+  ProjectListRespMessage,
+  ProjectSetMessage,
+  ProjectSetRespMessage,
+} from "./messages/project.js";
 
 /** Max permitted serialized message length in bytes (1 MB default) */
 export const DEFAULT_MAX_MESSAGE_BYTES = 1024 * 1024; // 1 MB
@@ -35,7 +46,14 @@ export type KnownMessage =
   | TermResizeMessage
   | TermExitMessage
   | SysRequestMessage
-  | SysMetricsMessage;
+  | SysMetricsMessage
+  | AgentPromptMessage
+  | AgentStreamMessage
+  | AgentAbortMessage
+  | ProjectListMessage
+  | ProjectListRespMessage
+  | ProjectSetMessage
+  | ProjectSetRespMessage;
 
 export type ProtocolErrorCode =
   | "ERR_MALFORMED_JSON"

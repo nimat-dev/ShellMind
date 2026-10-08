@@ -1,0 +1,15 @@
+appId: com.shellmind.app
+---
+# ShellMind Claude Code Stream & Project CWD E2E Flow (F007)
+- launchApp
+
+# 1. Assert App Online and Status
+- assertVisible: "ShellMind Terminal"
+- tapOn: "Status ➜"
+- assertVisible: "ShellMind Agent"
+- assertVisible: "ONLINE"
+
+# 2. Switch to Project & Claude Turn View
+# (Verifies project list and streaming agent turn)
+- tapOn: "Terminal ➜"
+- assertVisible: "ShellMind Terminal"
