@@ -3,35 +3,28 @@
 > Read this first, every session. Rewrite it for a cold reader before you stop.
 
 ## Where we are
-- **Phase**: Phase 03 — AI (Claude Code bridge) (100% COMPLETE) -> Phase 04 — Voice next
-- **Active feature**: F009 — Chat UI + session continuity + project picker (COMPLETE)
-- **Overall progress**: 8 / 12 features COMPLETE (67%)
+- **Phase**: Phase 04 — Voice (thin) (in progress)
+- **Active feature**: F010 — Push-to-talk, on-device STT → chat (COMPLETE) -> F011 next
+- **Overall progress**: 9 / 12 features COMPLETE (75%)
 
 ## Last verified
 - **Date**: 2026-10-08
-- **F009 Verification**:
-  - `@shellmind/protocol`:
-    - Added `ChatTurn`, `ChatTurnStatus`, `chat.history.req`, and `chat.history.resp` messages in `src/messages/chat.ts`.
-    - Registered in codec, registry, index.
-    - 29/29 protocol tests passing.
-  - `@shellmind/agent`:
-    - Pure core interface `ITranscriptStore` in `src/core/transcript.ts` with 0 Node builtins or I/O.
-    - Implemented `FileTranscriptStore` adapter with mode 0600, project path isolation, maxTurns pruning, and corrupt JSON resilience.
-    - Wired `transcriptStore` into `AgentDaemon`: records user and assistant turns on `agent.prompt`, serves `chat.history.req`, switches context cleanly on `project.set`.
-    - 52/52 agent tests passing.
+- **F010 Verification**:
   - `@shellmind/mobile`:
-    - Added `onChatHistory`, `requestChatHistory` to `AgentClient`.
-    - Implemented `ToolRenderer` registry with `DefaultRenderer`, `BashRenderer`, `FileRenderer`, and `SearchRenderer`.
-    - Implemented `ChatScreen.tsx` with project picker dropdown, streaming feed, tool cards, permission card embed, and prompt input/abort bar.
-    - 32/32 mobile tests passing.
-    - Maestro flow in `.maestro/chat_flow.yaml` and trace in `.harness/evidence/F009/e2e-trace.txt`.
-  - 113/113 tests passing monorepo-wide (`pnpm test`).
-  - Clean architecture verified with `dependency-cruiser` (`pnpm check-architecture`, 70 modules, 209 dependencies cruised, 0 violations).
+    - Defined `ISpeechToTextProvider` interface in `packages/mobile/src/voice/types.ts`.
+    - Implemented `MockSpeechToTextProvider` with fixture text, interim results streaming, permission controls, and cancel handling.
+    - Implemented `NativeSpeechToTextProvider` with platform iOS detection and safe runtime fallback.
+    - Implemented `getSpeechToTextProvider`, `setSpeechToTextProvider`, `resetSpeechToTextProvider` in `packages/mobile/src/voice/registry.ts`.
+    - Integrated push-to-talk mic button (`mic-button`), active recording indicator (`recording-indicator`), editable prompt populating, and permission denial banner (`voice-error-banner`) into `ChatScreen.tsx`.
+    - 39/39 mobile tests passing.
+    - Maestro flow in `.maestro/voice_stt_flow.yaml` and trace in `.harness/evidence/F010/e2e-trace.txt`.
+  - 120/120 tests passing monorepo-wide (`pnpm test`).
+  - Clean architecture verified with `dependency-cruiser` (`pnpm check-architecture`, 75 modules, 220 dependencies cruised, 0 violations).
   - Full suite verified clean (`pnpm verify`).
-- **Git**: branch `feat/F009`
+- **Git**: branch `feat/F010`
 
 ## Next step
-Merge PR #10 for F009. Advance to Phase 04 — Voice (thin): F010 (`push-to-talk, on-device STT -> chat turn`).
+Merge PR #11 for F010. Advance to F011 (`On-device TTS spoken replies`).
 
 ## Open blockers
 See `BLOCKERS.md`. None open.

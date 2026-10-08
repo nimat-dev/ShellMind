@@ -18,6 +18,18 @@ Notes: <anything the next agent should know>
 
 <!-- entries go below, newest first -->
 
+## 2026-10-08 — F010 Push-to-talk, on-device STT → chat — COMPLETE
+Branch/commit: feat/F010
+Evidence:
+  - `pnpm test` -> 120/120 tests pass (29 protocol, 52 agent, 39 mobile)
+  - `packages/mobile/src/mobile.test.ts` -> validates `ISpeechToTextProvider` contract, `MockSpeechToTextProvider` (start, stop, interim streaming, cancel, permission denied rejection, unavailable rejection), `NativeSpeechToTextProvider` safe platform detection, provider registry (`getSpeechToTextProvider`, `setSpeechToTextProvider`, `resetSpeechToTextProvider`), and `ChatScreen` integration
+  - `packages/mobile/src/components/ChatScreen.tsx` -> renders push-to-talk microphone button (`mic-button`), active listening indicator (`recording-indicator`), populated editable prompt field (`chat-input-field`), and informative permission denial banner (`voice-error-banner`)
+  - E2E flow specification recorded in `.maestro/voice_stt_flow.yaml` (trace in `.harness/evidence/F010/e2e-trace.txt`)
+  - `scripts/check-architecture.sh` -> 0 dependency violations across 75 modules
+  - full suite: `pnpm verify` -> 100% green (typecheck, lint, test, check-architecture)
+Evaluator: acceptance=5 correctness=5 boundaries=5 modularity=5 evidence=5 => avg 5.0 (PASS)
+Notes: Push-to-talk on-device STT complete. Next is F011 (On-device TTS spoken replies).
+
 ## 2026-10-08 — F009 Chat UI + session continuity + project picker — COMPLETE
 Branch/commit: feat/F009
 Evidence:

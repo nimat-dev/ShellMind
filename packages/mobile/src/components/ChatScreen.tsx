@@ -18,9 +18,11 @@ import type {
 import { AgentClient } from "../client.js";
 import { getToolRenderer } from "../renderers/registry.js";
 import { PermissionCard } from "./PermissionCard.js";
+import { getSpeechToTextProvider, type ISpeechToTextProvider } from "../voice/index.js";
 
 export interface ChatScreenProps {
   client: AgentClient;
+  sttProvider?: ISpeechToTextProvider;
 }
 
 interface ParsedToolExecution {
@@ -31,7 +33,7 @@ interface ParsedToolExecution {
   isError?: boolean;
 }
 
-export const ChatScreen: React.FC<ChatScreenProps> = ({ client }) => {
+export const ChatScreen: React.FC<ChatScreenProps> = ({ client, sttProvider }) => {
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [inputText, setInputText] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
@@ -39,6 +41,10 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({ client }) => {
   const [projects, setProjects] = useState<ProjectEntry[]>([]);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [pendingPermission, setPendingPermission] = useState<PermRequestPayload | null>(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [voiceError, setVoiceError] = useState<string | null>(null);
+
+  const activeSTT = sttProvider ?? getSpeechToTextProvider();
 
   const scrollViewRef = useRef<ScrollView>(null);
   const currentStreamingTurnRef = useRef<ChatTurn | null>(null);
@@ -225,6 +231,46 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({ client }) => {
     setPendingPermission(null);
   };
 
+  const handleStartVoice = async () => {
+    setVoiceError(null);
+    try {
+      const perm = await activeSTT.requestPermission();
+      if (perm === "denied") {
+        setVoiceError("Microphone permission denied. Tap to type instead.");
+        return;
+      }
+      await activeSTT.startRecording((interim) => {
+        setInputText(interim);
+      });
+      setIsRecording(true);
+    } catch (err) {
+      setVoiceError((err as Error).message || "Voice input failed");
+      setIsRecording(false);
+    }
+  };
+
+  const handleStopVoice = async () => {
+    if (!isRecording) return;
+    try {
+      const recognized = await activeSTT.stopRecording();
+      setIsRecording(false);
+      if (recognized.trim()) {
+        setInputText(recognized);
+      }
+    } catch {
+      setIsRecording(false);
+    }
+  };
+
+  const handleCancelVoice = async () => {
+    try {
+      await activeSTT.cancelRecording();
+    } catch {
+      // Ignored
+    }
+    setIsRecording(false);
+  };
+
   // Group tool_use and tool_result events into structured executions
   const extractToolExecutions = (toolEvents?: AgentStreamEvent[]): ParsedToolExecution[] => {
     if (!toolEvents) return [];
@@ -403,6 +449,27 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({ client }) => {
         )}
       </ScrollView>
 
+      {/* Voice Error Notification Banner */}
+      {voiceError && (
+        <View style={styles.voiceErrorBanner} testID="voice-error-banner">
+          <Text style={styles.voiceErrorText}>{voiceError}</Text>
+          <TouchableOpacity onPress={() => setVoiceError(null)}>
+            <Text style={styles.voiceErrorDismiss}>✕</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Active Voice Recording Indicator */}
+      {isRecording && (
+        <View style={styles.recordingIndicator} testID="recording-indicator">
+          <View style={styles.recordingPulseDot} />
+          <Text style={styles.recordingText}>Listening... release to send or edit</Text>
+          <TouchableOpacity onPress={handleCancelVoice} testID="voice-cancel-button">
+            <Text style={styles.voiceCancelText}>Cancel</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* Input Bar */}
       <View style={styles.inputBar}>
         <TextInput
@@ -414,6 +481,18 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({ client }) => {
           multiline
           testID="chat-input-field"
         />
+
+        {/* Push to talk Microphone Button */}
+        <TouchableOpacity
+          style={[styles.micButton, isRecording && styles.micButtonActive]}
+          onPressIn={handleStartVoice}
+          onPressOut={handleStopVoice}
+          activeOpacity={0.7}
+          testID="mic-button"
+          accessibilityLabel="Push to talk"
+        >
+          <Text style={styles.micButtonIcon}>{isRecording ? "🔴" : "🎙️"}</Text>
+        </TouchableOpacity>
 
         {isStreaming ? (
           <TouchableOpacity
@@ -669,5 +748,70 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontWeight: "700",
     fontSize: 13,
+  },
+  micButton: {
+    backgroundColor: "#21262D",
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#30363D",
+  },
+  micButtonActive: {
+    backgroundColor: "#492324",
+    borderColor: "#F85149",
+  },
+  micButtonIcon: {
+    fontSize: 14,
+  },
+  voiceErrorBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#3A1D1D",
+    borderTopWidth: 1,
+    borderColor: "#F85149",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  voiceErrorText: {
+    color: "#FFA198",
+    fontSize: 12,
+    flex: 1,
+  },
+  voiceErrorDismiss: {
+    color: "#FFA198",
+    fontSize: 14,
+    fontWeight: "700",
+    marginLeft: 8,
+  },
+  recordingIndicator: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#1C1427",
+    borderTopWidth: 1,
+    borderColor: "#A371F7",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    gap: 8,
+  },
+  recordingPulseDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: "#F85149",
+  },
+  recordingText: {
+    color: "#D2A8FF",
+    fontSize: 12,
+    flex: 1,
+    fontWeight: "500",
+  },
+  voiceCancelText: {
+    color: "#8B949E",
+    fontSize: 12,
+    fontWeight: "600",
   },
 });
