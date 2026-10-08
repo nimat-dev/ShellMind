@@ -8,10 +8,12 @@ continuity across *tools*, not just sessions.
 ## The runtimes
 | Runtime | Launch (in the repo) | Role |
 |---|---|---|
-| <<FILL: primary CLI, e.g. `claude`>> | in the repo root | Primary — where you start |
-| <<FILL: failover CLI>> | in the repo root | Failover |
+| `claude` (Claude Code) | in the repo root | Primary — where you start |
+| none configured yet | — | Failover — add a second CLI here if/when you adopt one |
 
-<<FILL: any install/auth one-liners for the failover runtime.>>
+Single-runtime for now; the failover protocol below still applies the moment a second runtime is
+added. (Note: the *product's* agent also shells out to `claude`, but that's unrelated to this
+build-time runtime.)
 
 ## The principle
 Nothing important lives in the chat. Before a runtime stops (or when it hits a limit) it

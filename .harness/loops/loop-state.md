@@ -5,7 +5,7 @@ finished features to History. A cold agent reads this to know which round it is 
 active feature also lives in `../CURRENT_TASK.md`; keep them consistent.
 
 ## Parameters (current feature)
-- Feature: <<FILL: first feature id, e.g. F001 — <name>>>
+- Feature: F000 — Claude Code headless spike
 - REQUIRED_PASSES: 2
 - MAX_ROUNDS: 6
 
@@ -15,7 +15,7 @@ active feature also lives in `../CURRENT_TASK.md`; keep them consistent.
 - Last Maker change: none (harness scaffolded)
 - Last Checker verdict: none
 - Standing defects: none
-- Next action: write the sprint contract for the first feature
+- Next action: write the sprint contract for F000, then run the spike
 
 ## History
 ```

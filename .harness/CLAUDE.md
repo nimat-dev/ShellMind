@@ -36,25 +36,28 @@ also add" the next thing.
 | What to do when state is abnormal | `loops/failure-modes.md` |
 
 ## Commands
-<<FILL: replace with your toolchain. These are the exact commands `init`, the loops, and
-the Checker run. Keep this table current — it's the first thing the next agent needs.>>
+Locked toolchain (pnpm · TypeScript · vitest · ESLint · dependency-cruiser · Expo/Maestro).
+Many commands below are **aspirational until F001 scaffolds the monorepo** — F001 creates the
+workspace, scripts, and CI that make them real. Keep this table current.
 
 | Action | Command |
 |---|---|
-| Install | `<install>` |
-| Dev server | `<dev>` |
-| Typecheck | `<typecheck>` |
-| Lint | `<lint>` |
-| Test (full suite) | `<test>` |
-| E2E | `<e2e>` (real-stack end-to-end; runs in CI) |
-| Build | `<build>` |
+| Install | `pnpm install` |
+| Dev — agent | `pnpm --filter @shellmind/agent dev` (foreground daemon) |
+| Dev — mobile | `pnpm --filter @shellmind/mobile start` (Expo dev client, iOS) |
+| Typecheck | `pnpm -r typecheck` (`tsc --noEmit`) |
+| Lint | `pnpm -r lint` (ESLint) |
+| Test (full suite) | `pnpm -r test` (vitest) |
+| E2E | `pnpm e2e` (Maestro flows on iOS sim + a real agent; runs in CI) |
+| Build | `pnpm -r build` |
 | Verify baseline | `./scripts/init.sh` (install + build + typecheck + lint + full test + check-architecture + e2e smoke) |
-| Check boundaries | `<check-architecture>` (`scripts/check-architecture.sh`) |
+| Check boundaries | `./scripts/check-architecture.sh` (dependency-cruiser vs `.dependency-cruiser.cjs`) |
 | Progress % | see `scripts/SCRIPTS.md` → progress-counter |
 
 ## Current target
-<<FILL: the active phase + feature, e.g. "Phase 01 — Foundation. Feature F001." Details
-live in `CURRENT_TASK.md`.>>
+**Phase 00 — De-risk. Feature F000** — spike: prove headless Claude Code runs on the subscription
+(no key) and its permission prompt is interceptable. Throwaway code; no monorepo yet. Details in
+`CURRENT_TASK.md`.
 
 ## Before you stop
 Run the Session-completion protocol in `AGENTS.md`: update PROJECT_STATE, CURRENT_TASK,

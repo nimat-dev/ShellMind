@@ -110,7 +110,23 @@ protocol above (commit + update the tracker), then fail over to the other runtim
 - Scope/acceptance is ambiguous and the files don't resolve it.
 - Maker-checker has failed the same feature for the max rounds (`loops/loop-state.md`).
 
-## Tech stack
-<<FILL: the locked stack for this project — languages, frameworks, datastore, package
-manager. Keep it here so every session honors the same choices. No dependency that isn't
-justified by the active feature.>>
+## Tech stack (locked — see `DECISIONS.md` for the why)
+- **Language:** TypeScript (strict) end-to-end.
+- **Monorepo:** pnpm workspaces — `packages/protocol` (pure core), `packages/agent`,
+  `packages/mobile`.
+- **Pure core deps:** `zod` only (no I/O libs in `protocol`).
+- **Agent (desktop daemon):** Node (LTS), `node-pty`, a socket/WS transport; drives the **local
+  Claude Code CLI** (`claude -p --output-format stream-json`) under the user's **subscription —
+  no API key**. Runs as the logged-in user, never root. Distributed as `npm i -g @shellmind/agent`
+  with a `shellmind` CLI; installs a user service (launchd LaunchAgent on macOS / `systemd --user`
+  on Linux). Targets **macOS + Linux**.
+- **Mobile:** Expo / React Native, **iOS only (V1)**; `expo-secure-store` for the device token;
+  on-device speech (iOS `SFSpeechRecognizer` / `AVSpeechSynthesizer`).
+- **Transport:** the user's **Tailscale** (WireGuard) mesh + a paired device-token on top; the
+  `Transport` is an interface so relay/P2P can slot in later.
+- **No datastore:** a local hashed-token device registry + an append-only audit log on the agent;
+  no server DB, no cloud backend.
+- **Tooling:** vitest (unit/integration), ESLint, **dependency-cruiser** (enforces
+  `rules/layer-boundaries.md`), Maestro (iOS e2e). CI runs the full verify on push.
+- **Datastore/deps rule:** no dependency that isn't justified by the active feature (record new
+  deps in the sprint contract).
