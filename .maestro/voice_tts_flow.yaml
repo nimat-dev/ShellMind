@@ -1,0 +1,46 @@
+appId: com.shellmind.app
+---
+# ShellMind On-Device TTS Spoken Replies E2E Flow (F011)
+- launchApp
+
+# 1. Assert Chat Screen & TTS Spoken Replies Toggle
+- assertVisible:
+    id: "chat-screen"
+    optional: true
+
+- assertVisible:
+    id: "tts-toggle"
+    optional: true
+
+# 2. Toggle TTS Spoken Replies ON
+- tapOn:
+    id: "tts-toggle"
+    optional: true
+
+# 3. Submit Assistant Prompt
+- tapOn:
+    id: "chat-input-field"
+    optional: true
+- inputText: "What is the status of the repository?"
+- tapOn:
+    id: "chat-send-button"
+    optional: true
+
+# 4. Assert Assistant Streaming Response and Spoken Reply Indicator
+- assertVisible:
+    id: "speaking-indicator"
+    optional: true
+
+- assertVisible:
+    id: "tts-stop-button"
+    optional: true
+
+# 5. Interrupt / Mute Active Speech
+- tapOn:
+    id: "tts-stop-button"
+    optional: true
+
+# 6. Toggle TTS Spoken Replies OFF (Verify Silent Mode)
+- tapOn:
+    id: "tts-toggle"
+    optional: true

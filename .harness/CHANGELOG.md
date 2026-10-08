@@ -18,6 +18,18 @@ Notes: <anything the next agent should know>
 
 <!-- entries go below, newest first -->
 
+## 2026-10-08 — F011 On-device TTS spoken replies (toggle) — COMPLETE
+Branch/commit: feat/F011
+Evidence:
+  - `pnpm test` -> 130/130 tests pass (29 protocol, 52 agent, 49 mobile)
+  - `packages/mobile/src/mobile.test.ts` -> validates `ITextToSpeechProvider` contract, `MockTextToSpeechProvider` (speak, stop, autocomplete, speaking state tracking, error injection, unavailable fallback), `extractSpokenSummary` (markdown stripping, code fence omission, link normalization, tool JSON artifact cleaning, sentence boundary capping <= maxChars), `NativeTextToSpeechProvider` safe platform detection, provider registry (`getTextToSpeechProvider`, `setTextToSpeechProvider`, `resetTextToSpeechProvider`), rapid turn non-overlapping playback, and `ChatScreen` integration
+  - `packages/mobile/src/components/ChatScreen.tsx` -> renders spoken replies toggle button (`tts-toggle`), active speech playback indicator (`speaking-indicator`), mute/stop button (`tts-stop-button`), auto-summarization and speech trigger on assistant turn completion, and instant interruption on prompt send, voice input, or manual stop
+  - E2E flow specification recorded in `.maestro/voice_tts_flow.yaml` (trace in `.harness/evidence/F011/e2e-trace.txt`)
+  - `scripts/check-architecture.sh` -> 0 dependency violations across 79 modules
+  - full suite: `pnpm verify` -> 100% green (typecheck, lint, test, check-architecture)
+Evaluator: acceptance=5 correctness=5 boundaries=5 modularity=5 evidence=5 => avg 5.0 (PASS)
+Notes: F011 complete. Phase 04 — Voice (thin) complete. The entire ShellMind roadmap (12/12 features) is 100% feature-complete!
+
 ## 2026-10-08 — F010 Push-to-talk, on-device STT → chat — COMPLETE
 Branch/commit: feat/F010
 Evidence:

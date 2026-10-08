@@ -18,11 +18,19 @@ import type {
 import { AgentClient } from "../client.js";
 import { getToolRenderer } from "../renderers/registry.js";
 import { PermissionCard } from "./PermissionCard.js";
-import { getSpeechToTextProvider, type ISpeechToTextProvider } from "../voice/index.js";
+import {
+  getSpeechToTextProvider,
+  type ISpeechToTextProvider,
+  getTextToSpeechProvider,
+  type ITextToSpeechProvider,
+  extractSpokenSummary,
+} from "../voice/index.js";
 
 export interface ChatScreenProps {
   client: AgentClient;
   sttProvider?: ISpeechToTextProvider;
+  ttsProvider?: ITextToSpeechProvider;
+  initialTtsEnabled?: boolean;
 }
 
 interface ParsedToolExecution {
@@ -33,7 +41,12 @@ interface ParsedToolExecution {
   isError?: boolean;
 }
 
-export const ChatScreen: React.FC<ChatScreenProps> = ({ client, sttProvider }) => {
+export const ChatScreen: React.FC<ChatScreenProps> = ({
+  client,
+  sttProvider,
+  ttsProvider,
+  initialTtsEnabled = false,
+}) => {
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [inputText, setInputText] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
@@ -43,8 +56,27 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({ client, sttProvider }) =
   const [pendingPermission, setPendingPermission] = useState<PermRequestPayload | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [voiceError, setVoiceError] = useState<string | null>(null);
+  const [ttsEnabled, setTtsEnabled] = useState(initialTtsEnabled);
+  const [isSpeaking, setIsSpeaking] = useState(false);
 
   const activeSTT = sttProvider ?? getSpeechToTextProvider();
+  const activeTTS = ttsProvider ?? getTextToSpeechProvider();
+
+  const ttsEnabledRef = useRef(initialTtsEnabled);
+  useEffect(() => {
+    ttsEnabledRef.current = ttsEnabled;
+  }, [ttsEnabled]);
+
+  const activeTTSRef = useRef(activeTTS);
+  useEffect(() => {
+    activeTTSRef.current = activeTTS;
+  }, [activeTTS]);
+
+  useEffect(() => {
+    return () => {
+      activeTTSRef.current.stop().catch(() => {});
+    };
+  }, []);
 
   const scrollViewRef = useRef<ScrollView>(null);
   const currentStreamingTurnRef = useRef<ChatTurn | null>(null);
@@ -168,20 +200,42 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({ client, sttProvider }) =
     } else if (event.type === "done") {
       setIsStreaming(false);
       setPendingPermission(null);
+      let finalText = event.result || "";
       setTurns((prev) => {
         const last = prev[prev.length - 1];
         if (!last || last.role !== "assistant") return prev;
+        finalText = last.text || event.result || "";
         const updated: ChatTurn = {
           ...last,
           status: "done",
-          text: last.text || event.result,
+          text: finalText,
           toolEvents: [...(last.toolEvents ?? []), event],
         };
         return [...prev.slice(0, -1), updated];
       });
+
+      // TTS Spoken reply if toggle is enabled
+      if (ttsEnabledRef.current && finalText) {
+        const summary = extractSpokenSummary(finalText);
+        if (summary) {
+          activeTTSRef.current.stop().catch(() => {});
+          setIsSpeaking(true);
+          activeTTSRef.current
+            .speak(summary, {
+              onStart: () => setIsSpeaking(true),
+              onDone: () => setIsSpeaking(false),
+              onError: () => setIsSpeaking(false),
+            })
+            .catch(() => {
+              setIsSpeaking(false);
+            });
+        }
+      }
     } else if (event.type === "aborted" || event.type === "error") {
       setIsStreaming(false);
       setPendingPermission(null);
+      activeTTSRef.current.stop().catch(() => {});
+      setIsSpeaking(false);
       setTurns((prev) => {
         const last = prev[prev.length - 1];
         if (!last || last.role !== "assistant") return prev;
@@ -195,9 +249,26 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({ client, sttProvider }) =
     }
   };
 
+  const handleStopSpeaking = () => {
+    activeTTSRef.current.stop().catch(() => {});
+    setIsSpeaking(false);
+  };
+
+  const handleToggleTTS = () => {
+    const next = !ttsEnabled;
+    setTtsEnabled(next);
+    if (!next) {
+      activeTTSRef.current.stop().catch(() => {});
+      setIsSpeaking(false);
+    }
+  };
+
   const handleSendPrompt = () => {
     const text = inputText.trim();
     if (!text || isStreaming) return;
+
+    activeTTSRef.current.stop().catch(() => {});
+    setIsSpeaking(false);
 
     const userTurn: ChatTurn = {
       id: `usr_${Date.now()}`,
@@ -215,6 +286,8 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({ client, sttProvider }) =
   };
 
   const handleAbort = () => {
+    activeTTSRef.current.stop().catch(() => {});
+    setIsSpeaking(false);
     client.abortAgent("Aborted by user");
     setIsStreaming(false);
     setPendingPermission(null);
@@ -233,6 +306,8 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({ client, sttProvider }) =
 
   const handleStartVoice = async () => {
     setVoiceError(null);
+    activeTTSRef.current.stop().catch(() => {});
+    setIsSpeaking(false);
     try {
       const perm = await activeSTT.requestPermission();
       if (perm === "denied") {
@@ -320,12 +395,27 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({ client, sttProvider }) =
           <Text style={styles.chevronIcon}>{isPickerOpen ? "▲" : "▼"}</Text>
         </TouchableOpacity>
 
-        {isStreaming && (
-          <View style={styles.busyIndicator}>
-            <ActivityIndicator size="small" color="#58A6FF" />
-            <Text style={styles.busyText}>Claude is thinking...</Text>
-          </View>
-        )}
+        <View style={styles.headerRightActions}>
+          {/* TTS Spoken Replies Toggle */}
+          <TouchableOpacity
+            style={[styles.ttsToggle, ttsEnabled && styles.ttsToggleActive]}
+            onPress={handleToggleTTS}
+            testID="tts-toggle"
+            accessibilityLabel={ttsEnabled ? "Disable spoken replies" : "Enable spoken replies"}
+          >
+            <Text style={styles.ttsToggleIcon}>{ttsEnabled ? "🔊" : "🔇"}</Text>
+            <Text style={[styles.ttsToggleText, ttsEnabled && styles.ttsToggleTextActive]}>
+              {ttsEnabled ? "Voice On" : "Voice Off"}
+            </Text>
+          </TouchableOpacity>
+
+          {isStreaming && (
+            <View style={styles.busyIndicator}>
+              <ActivityIndicator size="small" color="#58A6FF" />
+              <Text style={styles.busyText}>Claude is thinking...</Text>
+            </View>
+          )}
+        </View>
       </View>
 
       {/* Project Dropdown Modal/List */}
@@ -455,6 +545,21 @@ export const ChatScreen: React.FC<ChatScreenProps> = ({ client, sttProvider }) =
           <Text style={styles.voiceErrorText}>{voiceError}</Text>
           <TouchableOpacity onPress={() => setVoiceError(null)}>
             <Text style={styles.voiceErrorDismiss}>✕</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Active Speech Playback Indicator */}
+      {isSpeaking && (
+        <View style={styles.speakingIndicator} testID="speaking-indicator">
+          <View style={styles.speakingPulseDot} />
+          <Text style={styles.speakingText}>Speaking response...</Text>
+          <TouchableOpacity
+            onPress={handleStopSpeaking}
+            style={styles.ttsStopButton}
+            testID="tts-stop-button"
+          >
+            <Text style={styles.ttsStopText}>Mute</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -812,6 +917,72 @@ const styles = StyleSheet.create({
   voiceCancelText: {
     color: "#8B949E",
     fontSize: 12,
+    fontWeight: "600",
+  },
+  headerRightActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  ttsToggle: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#21262D",
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 6,
+    gap: 4,
+    borderWidth: 1,
+    borderColor: "#30363D",
+  },
+  ttsToggleActive: {
+    backgroundColor: "#1F2937",
+    borderColor: "#388BFD",
+  },
+  ttsToggleIcon: {
+    fontSize: 12,
+  },
+  ttsToggleText: {
+    color: "#8B949E",
+    fontSize: 11,
+    fontWeight: "600",
+  },
+  ttsToggleTextActive: {
+    color: "#58A6FF",
+  },
+  speakingIndicator: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#161B22",
+    borderTopWidth: 1,
+    borderTopColor: "#388BFD",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    gap: 8,
+  },
+  speakingPulseDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: "#388BFD",
+  },
+  speakingText: {
+    color: "#58A6FF",
+    fontSize: 12,
+    flex: 1,
+    fontWeight: "500",
+  },
+  ttsStopButton: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    backgroundColor: "#21262D",
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: "#F85149",
+  },
+  ttsStopText: {
+    color: "#F85149",
+    fontSize: 11,
     fontWeight: "600",
   },
 });

@@ -63,6 +63,12 @@ import {
   getSpeechToTextProvider,
   setSpeechToTextProvider,
   resetSpeechToTextProvider,
+  MockTextToSpeechProvider,
+  NativeTextToSpeechProvider,
+  getTextToSpeechProvider,
+  setTextToSpeechProvider,
+  resetTextToSpeechProvider,
+  extractSpokenSummary,
 } from "./voice/index.js";
 
 describe("Mobile Package Unit & Integration Tests", () => {
@@ -1253,6 +1259,198 @@ describe("Mobile Package Unit & Integration Tests", () => {
       const screenEl = React.createElement(ChatScreen, { client, sttProvider });
       expect(screenEl).toBeDefined();
       expect(screenEl.props.sttProvider).toBe(sttProvider);
+    });
+  });
+
+  describe("On-Device Text-to-Speech Spoken Replies (F011)", () => {
+    it("MockTextToSpeechProvider handles speech lifecycle, history, and completion", async () => {
+      const provider = new MockTextToSpeechProvider({
+        autoComplete: true,
+        delayMs: 10,
+      });
+
+      expect(await provider.isAvailable()).toBe(true);
+      expect(provider.isSpeaking()).toBe(false);
+      expect(provider.getSpokenHistory()).toHaveLength(0);
+
+      let started = false;
+      let done = false;
+
+      await provider.speak("All 120 tests passed successfully.", {
+        onStart: () => {
+          started = true;
+        },
+        onDone: () => {
+          done = true;
+        },
+      });
+
+      expect(started).toBe(true);
+      expect(provider.isSpeaking()).toBe(true);
+      expect(provider.getLastSpoken()).toBe("All 120 tests passed successfully.");
+
+      // Wait for simulated autocomplete
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      expect(done).toBe(true);
+      expect(provider.isSpeaking()).toBe(false);
+    });
+
+    it("MockTextToSpeechProvider stops and interrupts active speech", async () => {
+      const provider = new MockTextToSpeechProvider({
+        autoComplete: false,
+      });
+
+      await provider.speak("First turn response.");
+      expect(provider.isSpeaking()).toBe(true);
+
+      // Subsequent speak automatically interrupts prior utterance
+      await provider.speak("Second turn response.");
+      expect(provider.isSpeaking()).toBe(true);
+      expect(provider.getSpokenHistory()).toEqual([
+        "First turn response.",
+        "Second turn response.",
+      ]);
+
+      await provider.stop();
+      expect(provider.isSpeaking()).toBe(false);
+    });
+
+    it("MockTextToSpeechProvider handles errors and unavailable device state", async () => {
+      const unavailableProvider = new MockTextToSpeechProvider({ available: false });
+      expect(await unavailableProvider.isAvailable()).toBe(false);
+
+      let errorCaught: Error | null = null;
+      await expect(
+        unavailableProvider.speak("Test speech", {
+          onError: (err) => {
+            errorCaught = err;
+          },
+        })
+      ).rejects.toThrow(/not available on this device/i);
+      expect(errorCaught).not.toBeNull();
+
+      const erroringProvider = new MockTextToSpeechProvider({
+        shouldError: true,
+        errorMessage: "Audio hardware busy",
+      });
+      await expect(erroringProvider.speak("Test speech")).rejects.toThrow(/Audio hardware busy/i);
+    });
+
+    it("extractSpokenSummary removes code fences, markdown syntax, and tool artifacts", () => {
+      const rawMarkdown = `
+# Project Status
+Here is what happened:
+\`\`\`bash
+pnpm test
+\`\`\`
+All tests **passed** with *zero* failures.
+See details in [Architecture Doc](file:///docs/arch.md).
+- Item 1
+- Item 2
+{"tool": "Bash"}
+`;
+      const summary = extractSpokenSummary(rawMarkdown);
+      expect(summary).not.toContain("```");
+      expect(summary).not.toContain("pnpm test");
+      expect(summary).not.toContain("# Project Status");
+      expect(summary).not.toContain("**");
+      expect(summary).not.toContain("*zero*");
+      expect(summary).not.toContain("[Architecture Doc]");
+      expect(summary).not.toContain("{\"tool\"");
+      expect(summary).toContain("Project Status");
+      expect(summary).toContain("All tests passed with zero failures");
+      expect(summary).toContain("Architecture Doc");
+    });
+
+    it("extractSpokenSummary respects sentence boundaries and caps max length", () => {
+      const longText =
+        "The first sentence has completed cleanly. The second sentence explains additional background in great detail with extensive technical explanations that go on for a while. The third sentence wraps up the conversation.";
+
+      const capped = extractSpokenSummary(longText, 60);
+      expect(capped.length).toBeLessThanOrEqual(60);
+      expect(capped).toBe("The first sentence has completed cleanly.");
+
+      const fallbackText =
+        "Averylongwordwithoutpunctationthatjustkeepsexpandingandexpandingandexpandingandexpandingforawhile";
+      const fallbackCapped = extractSpokenSummary(fallbackText, 40);
+      expect(fallbackCapped.length).toBeLessThanOrEqual(44);
+      expect(fallbackCapped.endsWith("...")).toBe(true);
+
+      expect(extractSpokenSummary("")).toBe("");
+      expect(extractSpokenSummary("   ")).toBe("");
+    });
+
+    it("NativeTextToSpeechProvider handles environment checks and safe speak/stop calls", async () => {
+      const nativeProvider = new NativeTextToSpeechProvider();
+      const available = await nativeProvider.isAvailable();
+      expect(typeof available).toBe("boolean");
+
+      // Safe stop without exceptions
+      await expect(nativeProvider.stop()).resolves.toBeUndefined();
+      expect(nativeProvider.isSpeaking()).toBe(false);
+
+      // Safe speak with empty text returns without error
+      await expect(nativeProvider.speak("")).resolves.toBeUndefined();
+    });
+
+    it("Voice Registry manages active text-to-speech provider", () => {
+      const defaultProvider = getTextToSpeechProvider();
+      expect(defaultProvider).toBeDefined();
+
+      const customMock = new MockTextToSpeechProvider();
+      setTextToSpeechProvider(customMock);
+      expect(getTextToSpeechProvider()).toBe(customMock);
+
+      resetTextToSpeechProvider();
+      expect(getTextToSpeechProvider()).not.toBe(customMock);
+    });
+
+    it("ChatScreen component mounts with ttsProvider and initialTtsEnabled options", () => {
+      const client = new AgentClient({
+        webSocketFactory: (url) => new WsClient(url) as unknown as WebSocket,
+      });
+      const ttsProvider = new MockTextToSpeechProvider();
+
+      const screenEl = React.createElement(ChatScreen, {
+        client,
+        ttsProvider,
+        initialTtsEnabled: true,
+      });
+      expect(screenEl).toBeDefined();
+      expect(screenEl.props.ttsProvider).toBe(ttsProvider);
+      expect(screenEl.props.initialTtsEnabled).toBe(true);
+    });
+
+    it("handles rapid consecutive turns without overlapping audio", async () => {
+      const provider = new MockTextToSpeechProvider();
+
+      // First turn
+      const turn1Summary = extractSpokenSummary("Turn 1 response with markdown `code`.");
+      await provider.speak(turn1Summary);
+      expect(provider.isSpeaking()).toBe(true);
+      expect(provider.getLastSpoken()).toBe("Turn 1 response with markdown code.");
+
+      // Rapid second turn immediately cuts off first
+      const turn2Summary = extractSpokenSummary("Turn 2 rapid response.");
+      await provider.speak(turn2Summary);
+      expect(provider.isSpeaking()).toBe(true);
+      expect(provider.getLastSpoken()).toBe("Turn 2 rapid response.");
+      expect(provider.getSpokenHistory()).toEqual([
+        "Turn 1 response with markdown code.",
+        "Turn 2 rapid response.",
+      ]);
+
+      // Immediate user interruption stops playback
+      await provider.stop();
+      expect(provider.isSpeaking()).toBe(false);
+    });
+
+    it("extractSpokenSummary handles extreme lengths and nested structures", () => {
+      const hugeText = Array.from({ length: 50 }, (_, i) => `Paragraph ${i} contains technical details.`).join(" ");
+      const capped = extractSpokenSummary(hugeText, 200);
+      expect(capped.length).toBeLessThanOrEqual(200);
+      expect(capped.length).toBeGreaterThan(50);
+      expect(capped.endsWith(".")).toBe(true);
     });
   });
 });

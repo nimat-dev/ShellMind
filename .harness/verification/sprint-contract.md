@@ -1,47 +1,51 @@
-# Sprint Contract — F010: Push-to-talk, on-device STT → chat
+# Sprint Contract — F011: On-device TTS spoken replies
 
-Feature: F010 — Push-to-talk, on-device STT → chat
+Feature: F011 — On-device TTS spoken replies (toggle)
 Phase: Phase 04 — Voice (thin)
 Date: 2026-10-08
 
 ## 1. Scope & Acceptance Criteria
-- [x] Speech-to-Text provider abstraction in `packages/mobile/src/voice/`:
-  - `ISpeechToTextProvider` interface in `types.ts` with `isAvailable()`, `requestPermission()`, `startRecording()`, `stopRecording()`, `cancelRecording()`, `isRecording()`.
-  - `MockSpeechToTextProvider` in `mock.ts` supporting fixture text, error simulation, and permission control.
-  - `NativeSpeechToTextProvider` in `native.ts` safely interfacing with platform speech recognition with graceful fallback.
-  - Provider registry in `registry.ts` with `getSpeechToTextProvider()` and `setSpeechToTextProvider()`.
+- [x] Text-to-Speech provider abstraction in `packages/mobile/src/voice/`:
+  - `ITextToSpeechProvider` interface with `isAvailable()`, `speak(text, options)`, `stop()`, `isSpeaking()`.
+  - `TTSOptions` for rate, pitch, language, and lifecycle callbacks (`onStart`, `onDone`, `onError`).
+  - `MockTextToSpeechProvider` supporting deterministic test fixtures, speaking state tracking, and simulated completion.
+  - `NativeTextToSpeechProvider` safely interfacing with platform speech synthesis (`expo-speech` / `AVSpeechSynthesizer` / web speech fallback) with graceful fallback.
+  - Provider registry in `registry.ts` with `getTextToSpeechProvider()`, `setTextToSpeechProvider()`, and `resetTextToSpeechProvider()`.
+- [x] Concise summary extractor:
+  - `extractSpokenSummary(text, maxChars)` strips markdown syntax, code fences, headers, tool traces, and caps speech to concise sentences (default 300 chars).
 - [x] UI integration in `ChatScreen.tsx`:
-  - Push-to-talk microphone button (`testID="mic-button"`).
-  - Listening / active recording indicator (`testID="recording-indicator"`).
-  - Recognized transcript populates `chat-input-field` (visible and editable before send).
-  - Cancel option clears current utterance without populating text.
-  - Graceful mic permission denial handling (informative message, falls back to typing, no crash).
+  - Persistent spoken replies toggle (`testID="tts-toggle"`).
+  - Speaking indicator (`testID="speaking-indicator"`).
+  - Stop / Mute button (`testID="tts-stop-button"`).
+  - When toggle is ON: assistant turn completion automatically speaks concise summary.
+  - When toggle is OFF: speech is completely bypassed (silent).
+  - Interruptibility: new turn arriving, prompt being sent, mic button being pressed, or stop button being tapped immediately cancels/stops speaking.
 - [x] Edge cases covered (from `verification/edge-cases.md`):
-  - Silence / no speech: returns empty string cleanly without crashing or blocking UI.
-  - Very long utterance: caps gracefully.
-  - Release-to-stop / rapid tap: handles quick taps without race conditions.
-  - Cancel mid-capture: discards audio buffer without side effects.
-  - Permission denied: falls back to typing seamlessly.
+  - Toggle off: silent, no provider invocation.
+  - Very long reply: summarized and capped to prevent runaway speech.
+  - Rapid turns: previous utterance immediately aborted before new utterance starts (no audio overlap).
+  - Empty or tool-only turn: cleanly omitted or safely handled without awkward silence.
+  - Provider error / unavailable: fails gracefully without interrupting UI flow or throwing unhandled errors.
 - [x] Architecture boundaries: mobile voice modules stay in `packages/mobile`; pure core untouched; zero violations in `check-architecture.sh`.
 - [x] Full verification suite passing (`pnpm verify`).
 
 ## 2. Edge cases & failure paths (from `verification/edge-cases.md`)
-- Silence / empty utterance: returns empty string without error.
-- Permission denied: informs user and falls back to typing.
-- Speech recognizer unavailable: graceful fallback to standard typing input.
-- Cancel mid-utterance: stops recording and leaves input untouched.
-- Rapid press/release: prevents overlapping audio sessions.
+- TTS toggle off: zero speech output.
+- Excessive length: summarized and capped to ~300 chars.
+- Overlapping turns: previous speech stopped immediately upon new turn.
+- User interruption: tap mic / send / stop halts active playback immediately.
+- Synthesizer error: caught and handled without UI crash.
 
 ## 3. E2E scenario(s)
-1. User taps mic button in ChatScreen: recording starts, indicator displays listening state.
-2. User speaks: interim / final transcript is generated.
-3. User stops recording: recognized transcript populates input field.
-4. User taps Send: prompt is dispatched to agent as normal chat turn.
+1. User enables TTS toggle in ChatScreen (`testID="tts-toggle"`).
+2. Agent completes assistant turn response.
+3. ChatScreen extracts concise summary and calls TTS provider (`isSpeaking` becomes true, `speaking-indicator` visible).
+4. Audio completes or user taps stop (`testID="tts-stop-button"`), returning to idle.
+5. User disables TTS toggle: subsequent turns remain silent.
 
 ## 4. Plan (thinnest vertical slice)
-1. STT provider types and registry in `packages/mobile/src/voice/`.
-2. Mock and Native STT implementations.
-3. Integrate push-to-talk button and recording indicator into `ChatScreen.tsx`.
-4. Tests in `packages/mobile/src/mobile.test.ts`.
-5. Maestro flow `.maestro/voice_stt_flow.yaml`.
-6. Full verification (`pnpm verify`) and PR merge.
+1. TTS types (`tts-types.ts`), summary extractor (`summary.ts`), mock provider (`mock-tts.ts`), native provider (`native-tts.ts`), and registry extensions (`registry.ts`).
+2. Integrate TTS toggle, speaking state, and auto-speak on turn completion into `ChatScreen.tsx`.
+3. Unit and integration tests in `packages/mobile/src/mobile.test.ts`.
+4. Maestro E2E specification `.maestro/voice_tts_flow.yaml`.
+5. Monorepo verification (`pnpm verify`).

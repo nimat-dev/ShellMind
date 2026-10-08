@@ -22,19 +22,19 @@ a normal chat turn → spoken reply. Full-duplex conversation is a post-V1 idea.
 - [x] Verification: full verify + e2e green, no regressions.
 
 ## F011 — On-device TTS spoken replies
-**Status**: NOT STARTED
+**Status**: COMPLETE (PR #12)
 
 ### Acceptance criteria
-- [ ] Assistant replies can be spoken via on-device TTS (iOS `AVSpeechSynthesizer` / `expo-speech`,
+- [x] Assistant replies can be spoken via on-device TTS (iOS `AVSpeechSynthesizer` / `expo-speech`,
       behind the `TextToSpeech` registry); a persistent **toggle** controls it.
-- [ ] Speaks a concise summary of the turn, not raw tool output; interruptible (new turn stops the
+- [x] Speaks a concise summary of the turn, not raw tool output; interruptible (new turn stops the
       current speech).
-- [ ] Edge/error cases: toggle off = silent; very long reply (summarize/cap); rapid turns don't
+- [x] Edge/error cases: toggle off = silent; very long reply (summarize/cap); rapid turns don't
       overlap; silent mode / headphones respected.
-- [ ] E2E (Maestro, iOS): toggle on → a reply is spoken (assert TTS invoked); toggle off → silent.
+- [x] E2E (Maestro, iOS): toggle on → a reply is spoken (assert TTS invoked); toggle off → silent.
       Trace under `.harness/evidence/F011/`.
-- [ ] Boundary invariants: TTS behind the provider interface; `check-architecture` passes.
-- [ ] Verification: full verify + e2e green, no regressions.
+- [x] Boundary invariants: TTS behind the provider interface; `check-architecture` passes.
+- [x] Verification: full verify + e2e green, no regressions.
 
 ## Phase completion criteria
 You can ask by voice and hear the answer, hands-free, on iOS; full suite + e2e green;
