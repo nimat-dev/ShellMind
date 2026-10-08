@@ -22,6 +22,12 @@ import {
   TERM_EXIT_MESSAGE_TYPE,
   TermExitMessageSchema,
 } from "./messages/terminal.js";
+import {
+  SYS_REQUEST_MESSAGE_TYPE,
+  SysRequestMessageSchema,
+  SYS_METRICS_MESSAGE_TYPE,
+  SysMetricsMessageSchema,
+} from "./messages/sysinfo.js";
 
 export type AnyMessageSchema = z.ZodTypeAny;
 
@@ -41,6 +47,8 @@ export class MessageRegistry {
     this.register(TERM_DATA_MESSAGE_TYPE, TermDataMessageSchema);
     this.register(TERM_RESIZE_MESSAGE_TYPE, TermResizeMessageSchema);
     this.register(TERM_EXIT_MESSAGE_TYPE, TermExitMessageSchema);
+    this.register(SYS_REQUEST_MESSAGE_TYPE, SysRequestMessageSchema);
+    this.register(SYS_METRICS_MESSAGE_TYPE, SysMetricsMessageSchema);
   }
 
   public static getInstance(): MessageRegistry {

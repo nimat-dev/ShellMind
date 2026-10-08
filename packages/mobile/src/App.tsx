@@ -95,6 +95,7 @@ export const App: React.FC<AppProps> = ({ storage, client }) => {
           <StatusScreen
             state={clientState}
             pairingConfig={pairingConfig}
+            client={agentClient}
             onPing={handlePing}
             onReconnect={handleReconnect}
             onUnpair={handleUnpair}

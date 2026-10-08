@@ -5,6 +5,7 @@ export * from "./terminal/buffer.js";
 export * from "./components/AccessoryBar.js";
 export * from "./components/HistoryModal.js";
 export * from "./components/PairingScreen.js";
+export * from "./components/SysInfoTiles.js";
 export * from "./components/StatusScreen.js";
 export * from "./components/TerminalScreen.js";
 export * from "./App.js";

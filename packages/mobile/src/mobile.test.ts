@@ -8,9 +8,11 @@ import {
   createPongMessage,
   createTermDataMessage,
   createTermExitMessage,
+  createSysMetricsMessage,
   type HelloMessage,
   type PingMessage,
   type TermInputMessage,
+  type SysMetricsPayload,
 } from "@shellmind/protocol";
 import { parsePairingPayload } from "./pairing.js";
 import { MemorySecureStorage, ExpoSecureStoreAdapter } from "./storage.js";
@@ -417,6 +419,111 @@ describe("Mobile Package Unit & Integration Tests", () => {
       await new Promise((resolve) => setTimeout(resolve, 80));
 
       expect(exitResult).toEqual({ code: 0, signal: undefined });
+      client.disconnect();
+    });
+  });
+
+  describe("System Metrics Telemetry Client Flow (F006)", () => {
+    let wss: WebSocketServer;
+    let serverPort: number;
+
+    beforeEach(async () => {
+      wss = new WebSocketServer({ port: 0, host: "127.0.0.1" });
+      await new Promise<void>((resolve) => wss.on("listening", () => resolve()));
+      const addr = wss.address();
+      serverPort = typeof addr === "object" && addr !== null ? addr.port : 0;
+    });
+
+    afterEach(async () => {
+      await new Promise<void>((resolve) => {
+        wss.close(() => resolve());
+      });
+    });
+
+    it("sends sys.request and dispatches sys.metrics to listeners", async () => {
+      const mockMetricsPayload: SysMetricsPayload = {
+        cpu: { percent: 42.5, cores: 8 },
+        memory: {
+          totalBytes: 16 * 1024 * 1024 * 1024,
+          usedBytes: 8 * 1024 * 1024 * 1024,
+          percent: 50.0,
+        },
+        disk: {
+          totalBytes: 500 * 1024 * 1024 * 1024,
+          usedBytes: 250 * 1024 * 1024 * 1024,
+          percent: 50.0,
+          mount: "/",
+        },
+        uptimeSeconds: 7200,
+        platform: "darwin",
+        hostname: "test-node",
+        collectedAt: Date.now(),
+      };
+
+      wss.on("connection", (ws) => {
+        ws.on("message", (data) => {
+          const raw = data.toString("utf-8");
+          const parsed = parseMessage(raw);
+          if (!parsed.success) return;
+
+          if (parsed.data.type === "hello") {
+            const ack = createHelloAckMessage(
+              {
+                sessionId: "ses_sys_123",
+                agentVersion: "0.1.0",
+                serverName: "MacBook Pro",
+              },
+              { sessionId: "ses_sys_123" }
+            );
+            ws.send(serializeMessage(ack));
+          } else if (parsed.data.type === "sys.request") {
+            const metricsMsg = createSysMetricsMessage(mockMetricsPayload, {
+              sessionId: "ses_sys_123",
+            });
+            ws.send(serializeMessage(metricsMsg));
+          }
+        });
+      });
+
+      const client = new AgentClient({
+        webSocketFactory: (url) => new WsClient(url) as unknown as WebSocket,
+      });
+
+      const received: SysMetricsPayload[] = [];
+      const unsub = client.onSystemMetrics((m) => {
+        received.push(m);
+      });
+
+      client.connect({
+        deviceId: "dev_mobile",
+        token: "tok_mobile",
+        host: "127.0.0.1",
+        port: serverPort,
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      expect(client.getState().status).toBe("online");
+
+      // Request metrics
+      client.requestSystemMetrics();
+      await new Promise((resolve) => setTimeout(resolve, 80));
+
+      expect(received).toHaveLength(1);
+      const first = received[0];
+      expect(first).toBeDefined();
+      expect(first?.cpu.percent).toBe(42.5);
+      expect(first?.cpu.cores).toBe(8);
+      expect(first?.memory.percent).toBe(50.0);
+      expect(first?.disk?.percent).toBe(50.0);
+      expect(first?.hostname).toBe("test-node");
+      expect(first?.uptimeSeconds).toBe(7200);
+
+      // Unsubscribe test
+      unsub();
+      client.requestSystemMetrics();
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      expect(received).toHaveLength(1); // Still 1, didn't receive new one
+
       client.disconnect();
     });
   });

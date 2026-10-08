@@ -14,6 +14,10 @@ import {
   TermResizeMessage,
   TermExitMessage,
 } from "./messages/terminal.js";
+import {
+  SysRequestMessage,
+  SysMetricsMessage,
+} from "./messages/sysinfo.js";
 
 /** Max permitted serialized message length in bytes (1 MB default) */
 export const DEFAULT_MAX_MESSAGE_BYTES = 1024 * 1024; // 1 MB
@@ -29,7 +33,9 @@ export type KnownMessage =
   | TermInputMessage
   | TermDataMessage
   | TermResizeMessage
-  | TermExitMessage;
+  | TermExitMessage
+  | SysRequestMessage
+  | SysMetricsMessage;
 
 export type ProtocolErrorCode =
   | "ERR_MALFORMED_JSON"

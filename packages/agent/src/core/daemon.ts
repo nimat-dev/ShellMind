@@ -7,21 +7,25 @@ import {
   createErrorMessage,
   createTermDataMessage,
   createTermExitMessage,
+  createSysMetricsMessage,
   type HelloMessage,
   type PingMessage,
   type TermOpenMessage,
   type TermInputMessage,
   type TermResizeMessage,
+  type SysRequestMessage,
   type KnownMessage,
 } from "@shellmind/protocol";
 import type { TransportServer, TransportConnection, TransportListener } from "./transport.js";
 import type { IDeviceRegistry, PairedDevice } from "./device.js";
 import type { ITerminalManager, ITerminalSession } from "./terminal.js";
+import type { ISysInfoProvider } from "./sysinfo.js";
 
 export interface AgentDaemonConfig {
   agentVersion: string;
   serverName: string;
   terminalManager?: ITerminalManager;
+  sysInfoProvider?: ISysInfoProvider;
 }
 
 export interface AuthenticatedSession {
@@ -148,6 +152,36 @@ export class AgentDaemon {
       if (term) {
         const resizeMsg = message as TermResizeMessage;
         term.resize(resizeMsg.payload.cols, resizeMsg.payload.rows);
+      }
+    });
+
+    this.registerHandler("sys.request", async (message, ctx) => {
+      if (!this.config.sysInfoProvider) {
+        await ctx.send(
+          createErrorMessage({
+            code: "SYSINFO_NOT_SUPPORTED",
+            message: "System telemetry provider is not configured on this agent",
+          })
+        );
+        return;
+      }
+
+      const req = message as SysRequestMessage;
+      try {
+        const metrics = await this.config.sysInfoProvider.getMetrics({
+          diskPath: req.payload.diskPath,
+        });
+        const metricsMsg = createSysMetricsMessage(metrics, {
+          sessionId: ctx.session.sessionId,
+        });
+        await ctx.send(metricsMsg);
+      } catch (err) {
+        await ctx.send(
+          createErrorMessage({
+            code: "SYSINFO_FETCH_FAILED",
+            message: (err as Error).message || "Failed to collect system metrics",
+          })
+        );
       }
     });
   }

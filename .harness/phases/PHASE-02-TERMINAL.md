@@ -36,19 +36,19 @@ health. This is the SSH-client parity we get for free — necessary, not the pit
 - [x] Verification: full verify + e2e green, no regressions.
 
 ## F006 — System-info tiles
-**Status**: IN PROGRESS
+**Status**: COMPLETE (PR #7)
 
 ### Acceptance criteria
-- [ ] `sysinfo` adapter returns CPU %, memory used/total, disk used/total on `sys.request`; mobile
+- [x] `sysinfo` adapter returns CPU %, memory used/total, disk used/total on `sys.request`; mobile
       shows tiles (works on macOS + Linux).
-- [ ] Refreshes on an interval while visible; stops when backgrounded (no battery drain).
-- [ ] Edge/error cases: metric unavailable on a platform → graceful "n/a", not a crash; stale data
+- [x] Refreshes on an interval while visible; stops when backgrounded (no battery drain).
+- [x] Edge/error cases: metric unavailable on a platform → graceful "n/a", not a crash; stale data
       marked when disconnected.
-- [ ] E2E (Maestro): tiles render real numbers against a running agent. Trace under
+- [x] E2E (Maestro): tiles render real numbers against a running agent. Trace under
       `.harness/evidence/F006/`.
-- [ ] Boundary invariants: metrics gathering only in `adapters/sysinfo/**`; `check-architecture`
+- [x] Boundary invariants: metrics gathering only in `adapters/sysinfo/**`; `check-architecture`
       passes.
-- [ ] Verification: full verify + e2e green, no regressions.
+- [x] Verification: full verify + e2e green, no regressions.
 
 ## Phase completion criteria
 From the phone you can run real shell commands with a usable mobile terminal and see live CPU/mem/
