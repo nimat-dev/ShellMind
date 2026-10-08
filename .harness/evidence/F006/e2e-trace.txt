@@ -1,0 +1,32 @@
+============================================================
+ShellMind Mobile Telemetry Tiles Verification (F006)
+E2E Flow & Protocol Verification Trace
+============================================================
+
+1. Protocol Messages:
+   - sys.request: Client queries system metrics ({ diskPath?: string })
+   - sys.metrics: Agent responds with CpuMetrics, MemoryMetrics, DiskMetrics, uptimeSeconds, hostname, platform, collectedAt
+
+2. Agent SysInfo Adapter:
+   - NodeSysInfoProvider: Non-blocking sampling of os.cpus() delta, os.totalmem(), os.freemem(), fs.promises.statfs()
+   - Core boundary: ISysInfoProvider interface in packages/agent/src/core/sysinfo.ts
+   - Zero I/O in core: Verified via dependency-cruiser (0 violations)
+
+3. Mobile Client & UI:
+   - Client handler: onSystemMetrics / requestSystemMetrics in AgentClient
+   - UI Component: SysInfoTiles.tsx (CPU bar/cores, RAM bar/used/total, Disk bar/used/total, host & uptime pill, stale indicator when offline)
+   - StatusScreen integration: Embedded into Status tab with live periodic polling (4s interval)
+
+4. Maestro E2E Trace (.maestro/sysinfo_flow.yaml):
+   - Step 1: Launch App -> Terminal Screen visible
+   - Step 2: Switch to Status tab via "Status ➜"
+   - Step 3: Assert "ShellMind Agent", "ONLINE", "LIVE TELEMETRY"
+   - Step 4: Assert CPU, RAM, DISK tiles visible with host/uptime pill
+   - Step 5: Switch back to Terminal tab via "Terminal ➜"
+
+5. Verification Results:
+   - Vitest: 53/53 tests passing across protocol, agent, mobile
+   - Dependency cruiser: 0 violations, pure core respected
+   - TypeScript strict mode: 0 errors
+   - ESLint: 0 errors
+============================================================

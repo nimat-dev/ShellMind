@@ -9,6 +9,7 @@ import {
   createTermOpenMessage,
   createTermInputMessage,
   createTermResizeMessage,
+  createSysRequestMessage,
   parseMessage,
   serializeMessage,
   type HelloAckMessage,
@@ -16,6 +17,7 @@ import {
   type PongMessage,
   type TermDataMessage,
   type TermExitMessage,
+  type SysMetricsMessage,
   type KnownMessage,
 } from "@shellmind/protocol";
 import {
@@ -23,6 +25,7 @@ import {
   TailnetTransportServer,
   FileDeviceRegistry,
   NodePtyManager,
+  NodeSysInfoProvider,
   isTailnetIp,
 } from "./index.js";
 
@@ -41,10 +44,12 @@ describe("Agent Daemon & Transport Integration", () => {
     registry = new FileDeviceRegistry(registryPath);
     transport = new TailnetTransportServer({ allowLocalhost: true });
     terminalManager = new NodePtyManager();
+    const sysInfoProvider = new NodeSysInfoProvider();
     daemon = new AgentDaemon(transport, registry, {
       agentVersion: "0.1.0",
       serverName: "ShellMind Test Daemon",
       terminalManager,
+      sysInfoProvider,
     });
 
     const listener = await daemon.start({ host: "127.0.0.1", port: 0 });
@@ -391,6 +396,73 @@ describe("Agent Daemon & Transport Integration", () => {
 
       // Confirm session is cleared
       expect(daemon.getActiveSessions().length).toBe(0);
+    });
+  });
+
+  describe("System Telemetry (F006)", () => {
+    it("NodeSysInfoProvider gathers valid CPU, memory, and disk metrics", async () => {
+      const provider = new NodeSysInfoProvider();
+      const metrics = await provider.getMetrics();
+
+      expect(metrics.cpu.cores).toBeGreaterThanOrEqual(1);
+      expect(metrics.cpu.percent).toBeGreaterThanOrEqual(0);
+      expect(metrics.cpu.percent).toBeLessThanOrEqual(100);
+
+      expect(metrics.memory.totalBytes).toBeGreaterThan(0);
+      expect(metrics.memory.usedBytes).toBeGreaterThan(0);
+      expect(metrics.memory.percent).toBeGreaterThanOrEqual(0);
+      expect(metrics.memory.percent).toBeLessThanOrEqual(100);
+
+      expect(metrics.uptimeSeconds).toBeGreaterThan(0);
+      expect(metrics.hostname.length).toBeGreaterThan(0);
+      expect(metrics.platform.length).toBeGreaterThan(0);
+
+      if (metrics.disk) {
+        expect(metrics.disk.totalBytes).toBeGreaterThan(0);
+        expect(metrics.disk.percent).toBeGreaterThanOrEqual(0);
+      }
+    });
+
+    it("daemon responds to sys.request with sys.metrics envelope", async () => {
+      const pairing = registry.createPairing("Telemetry Client");
+      const ws = new WebSocket(`ws://127.0.0.1:${serverPort}`);
+
+      await new Promise<void>((resolve) => ws.on("open", () => resolve()));
+
+      const messages: string[] = [];
+      ws.on("message", (data) => messages.push(data.toString("utf-8")));
+
+      // 1. Authenticate
+      ws.send(
+        serializeMessage(
+          createHelloMessage({
+            deviceId: pairing.device.id,
+            token: pairing.rawToken,
+            clientVersion: "1.0.0",
+            platform: "ios",
+          })
+        )
+      );
+
+      await waitForMessage(
+        messages,
+        (m): m is HelloAckMessage => m.type === "hello.ack"
+      );
+
+      // 2. Send sys.request
+      ws.send(serializeMessage(createSysRequestMessage()));
+
+      const metricsMsg = await waitForMessage(
+        messages,
+        (m): m is SysMetricsMessage => m.type === "sys.metrics"
+      );
+
+      expect(metricsMsg.type).toBe("sys.metrics");
+      expect(metricsMsg.payload.cpu.cores).toBeGreaterThanOrEqual(1);
+      expect(metricsMsg.payload.memory.totalBytes).toBeGreaterThan(0);
+      expect(metricsMsg.payload.uptimeSeconds).toBeGreaterThan(0);
+
+      ws.close();
     });
   });
 });

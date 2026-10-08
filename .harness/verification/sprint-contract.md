@@ -1,63 +1,51 @@
-# Sprint Contract — F005: Mobile terminal UI (emulator + accessory keys + scrollback + history)
+# Sprint Contract — F006: System-info tiles (CPU / memory / disk)
 
-Feature: F005 — Mobile terminal UI (emulator + accessory keys + scrollback + history)
+Feature: F006 — System-info tiles (CPU / memory / disk)
 Phase: Phase 02 — Terminal & telemetry
 Date: 2026-10-07
 
 ## 1. Scope & Acceptance Criteria
-- [x] ADR-0002 recorded: Native React Native ANSI Stream Buffer vs xterm.js in WebView.
-- [x] Pure TypeScript terminal buffer (`TerminalBuffer` in `packages/mobile/src/terminal/buffer.ts`):
-  - Ingests streaming `term.data` text chunks.
-  - Parses ANSI color codes (SGR standard & bright foregrounds/backgrounds, bold, dim, underline, inverse, reset).
-  - Handles terminal control characters (`\r`, `\n`, `\b`, `\x1b[2K`, `\x1b[K`).
-  - Implements scrollback line buffer with configurable line limit (e.g. 2000 lines).
-  - Produces structured line spans for rendering.
-- [x] Mobile-native accessory keyboard row:
-  - Quick action keys: `Ctrl`, `Esc`, `Tab`, `↑`, `↓`, `←`, `→`, `|`, `/`, `-`, `~`.
-  - When `Ctrl` modifier is active, typing a character generates control code (e.g. `Ctrl+C` -> `\x03`, `Ctrl+D` -> `\x04`, `Ctrl+Z` -> `\x1a`).
-- [x] Command history buffer:
-  - Stores executed input commands.
-  - Up / Down arrow navigation cycles through previous commands.
-  - History drawer / list for tap-to-rerun.
-- [x] Terminal UI (`TerminalScreen.tsx`):
-  - Monospace font, dark high-contrast terminal theme.
-  - Autoscroll on new output with scrollback inspection.
-  - Window resize trigger (`term.resize`) calculated on orientation / viewport change.
-  - Disconnect banner preserving terminal output without freezing UI.
-- [x] Client integration in `AgentClient`:
-  - Terminal session management (`openTerminal`, `sendTerminalInput`, `resizeTerminal`).
-  - Terminal event listeners (`onTerminalData`, `onTerminalExit`).
-- [x] Comprehensive unit and integration tests in `packages/mobile/src/terminal/buffer.test.ts` and `packages/mobile/src/mobile.test.ts`.
-- [x] Clean architecture (`check-architecture.sh` 0 violations). Full verify (`pnpm verify`) green.
+- [x] Wire protocol messages in `@shellmind/protocol`:
+  - `sys.request`: client telemetry query.
+  - `sys.metrics`: agent telemetry response with CPU %, memory (used/total/percent), disk (used/total/percent), uptime, hostname, platform.
+- [x] Pure core sysinfo interface in `@shellmind/agent`: `src/core/sysinfo.ts` (`ISysInfoProvider`, `SystemMetrics`).
+- [x] Concrete adapter in `@shellmind/agent`: `src/adapters/sysinfo/node-sysinfo.ts` wrapping Node built-ins (`os`, `fs.statfs` for macOS & Linux) without third-party binary bloat.
+- [x] Agent daemon message dispatch in `src/core/daemon.ts` responding to `sys.request` with `sys.metrics`.
+- [x] Mobile client integration in `@shellmind/mobile`:
+  - `requestSystemMetrics()`, `onSystemMetrics()` in `AgentClient`.
+  - Tile UI component `SysInfoTiles.tsx` displaying CPU, Memory, Disk, Uptime with color-coded health bars.
+  - Integration into `StatusScreen.tsx` with auto-refresh while visible and stale data indication when offline.
+- [x] Edge cases covered:
+  - Metric unavailable on a platform (e.g. disk access denied) -> graceful fallback ("n/a"), never crash.
+  - Disconnected state -> marks metrics as stale without clearing UI.
+  - Event loop safety -> non-blocking metric collection.
+- [x] Architecture boundaries: pure core contains 0 I/O; `check-architecture.sh` reports 0 violations.
+- [x] Full verification suite passing (`pnpm verify`).
 
 ## 2. Edge cases & failure paths (from `verification/edge-cases.md`)
-- Rapid / large output chunks (thousands of lines): buffer trims scrollback cleanly without OOM or lag.
-- ANSI color sequences split across chunks: buffer maintains parser state.
-- Carriage returns (`\r`) overwriting lines (e.g. download progress bars `[==>   ] 20%` -> `[====> ] 40%`).
-- Disconnect mid-session: UI displays disconnected banner, disables input, but retains full scrollback history.
-- Rapid typing and control character key combinations (`Ctrl+C` sends interrupt `\x03`).
-- Window resize: calculates reasonable cols/rows and sends `term.resize`.
+- Platform without `statfs` or restricted disk permission: disk metrics return null/fallback; UI gracefully renders "N/A" instead of crashing.
+- CPU calculation delta: handles initial sample or multi-core distribution without returning NaN or negative numbers.
+- Connection loss during polling: stops polling / flags data as stale; resumes automatically upon reconnection.
+- Zero battery drain: polling timer cleaned up when unmounted.
 
 ## 3. E2E scenario(s)
-1. Client connects -> opens terminal session -> receives banner and prompt via `term.data`.
-2. User enters command (`pwd`) -> receives streamed output -> command added to history.
-3. User presses `↑` accessory key -> recalls previous command (`pwd`).
-4. User taps `Ctrl` + `C` -> sends `\x03` interrupt signal.
-5. Resize viewport -> sends `term.resize` with updated dimensions.
-6. Connection drops -> status banner shows Offline, scrollback remains visible and interactive.
+1. Agent daemon starts with sysinfo provider.
+2. Mobile client connects -> requests telemetry -> receives `sys.metrics` frame.
+3. Mobile tiles render live CPU, RAM, and Disk values with valid percentages.
+4. Connection disconnects -> tiles display "Disconnected / Stale".
 
 ## 4. Plan (thinnest vertical slice)
-1. Create `packages/mobile/src/terminal/buffer.ts` (ANSI parser & scrollback buffer state machine).
-2. Write unit tests in `packages/mobile/src/terminal/buffer.test.ts`.
-3. Add terminal methods to `AgentClient` in `packages/mobile/src/client.ts`.
-4. Create React components: `AccessoryBar.tsx`, `HistoryModal.tsx`, `TerminalScreen.tsx`, and wire in `App.tsx`.
-5. Add integration tests in `packages/mobile/src/mobile.test.ts`.
-6. Run full verification (`pnpm verify`), capture evidence, and open PR.
+1. Protocol schemas in `@shellmind/protocol/src/messages/sysinfo.ts` and registry.
+2. Core interface and adapter in `packages/agent/src/core/sysinfo.ts` and `src/adapters/sysinfo/node-sysinfo.ts`.
+3. Daemon handler in `packages/agent/src/core/daemon.ts` and integration test in `src/agent.test.ts`.
+4. Mobile client methods in `packages/mobile/src/client.ts` and UI in `src/components/SysInfoTiles.tsx`.
+5. Mobile integration test in `packages/mobile/src/mobile.test.ts`.
+6. Maestro flow in `.maestro/sysinfo_flow.yaml`.
+7. Full verification (`pnpm verify`) and PR review/merge.
 
 ## 5. Out of scope (parked, not built)
-- System telemetry metrics tiles (F006).
-- Claude Code AI bridge (F007-F009).
-- Alternate screen buffer (vim/htop curses full-screen redraw) — deferred per ADR-0002.
+- Historical telemetry time-series graphing (Phase 02 requires at-a-glance health, not full Grafana).
+- AI Claude Code bridge (Phase 03).
 
 ## 6. New dependencies (with justification)
-None required. Uses built-in React Native components and pure TypeScript.
+None. Node built-in `os` and `fs.statfsSync`/`fs.promises.statfs` satisfy all telemetry requirements.

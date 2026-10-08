@@ -1,11 +1,13 @@
 import React from "react";
 import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
-import type { ClientState } from "../client.js";
+import type { ClientState, AgentClient } from "../client.js";
 import type { PairingConfig } from "../pairing.js";
+import { SysInfoTiles } from "./SysInfoTiles.js";
 
 export interface StatusScreenProps {
   state: ClientState;
   pairingConfig: PairingConfig;
+  client?: AgentClient;
   onPing: () => void;
   onReconnect: () => void;
   onUnpair: () => void;
@@ -15,6 +17,7 @@ export interface StatusScreenProps {
 export const StatusScreen: React.FC<StatusScreenProps> = ({
   state,
   pairingConfig,
+  client,
   onPing,
   onReconnect,
   onUnpair,
@@ -89,6 +92,8 @@ export const StatusScreen: React.FC<StatusScreenProps> = ({
           <Text style={styles.value}>{state.agentVersion ?? "-"}</Text>
         </View>
       </View>
+
+      {client && <SysInfoTiles client={client} />}
 
       {state.errorMessage ? (
         <View style={styles.errorBox}>

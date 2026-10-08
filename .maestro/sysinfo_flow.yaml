@@ -1,0 +1,24 @@
+appId: com.shellmind.app
+---
+# ShellMind Mobile System Telemetry E2E Flow (F006)
+- launchApp
+
+# 1. Switch from Terminal view to Status view
+- assertVisible: "ShellMind Terminal"
+- tapOn: "Status ➜"
+
+# 2. Assert Status and Live Telemetry elements
+- assertVisible: "ShellMind Agent"
+- assertVisible: "ONLINE"
+- assertVisible: "LIVE TELEMETRY"
+
+# 3. Assert Metric Tiles
+- assertVisible: "CPU"
+- assertVisible: "RAM"
+- assertVisible: "DISK"
+- assertVisible: "Host:"
+- assertVisible: "Uptime:"
+
+# 4. Switch back to Terminal
+- tapOn: "Terminal ➜"
+- assertVisible: "ShellMind Terminal"

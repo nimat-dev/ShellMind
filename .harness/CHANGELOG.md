@@ -18,6 +18,22 @@ Notes: <anything the next agent should know>
 
 <!-- entries go below, newest first -->
 
+## 2026-10-07 — F006 System-info tiles (CPU / memory / disk) — COMPLETE
+Branch/commit: feat/F006
+Evidence:
+  - `pnpm test` -> 53/53 tests pass (19 protocol, 12 agent, 22 mobile)
+  - `packages/protocol/src/protocol.test.ts` -> validates `sys.request` and `sys.metrics` message encoding/decoding, Zod payload validation (CPU, memory, disk, uptime, hostname, platform)
+  - `packages/agent/src/adapters/sysinfo/node-sysinfo.ts` -> non-blocking CPU usage delta computation, memory metrics from `os.totalmem/freemem`, cross-platform disk usage from `fs.promises.statfs('/')`
+  - `packages/agent/src/agent.test.ts` -> validates agent daemon responds to `sys.request` with `sys.metrics` frame
+  - `packages/mobile/src/mobile.test.ts` -> validates `client.requestSystemMetrics()` triggers `sys.request` and dispatches `sys.metrics` to registered listeners
+  - UI Component `SysInfoTiles.tsx` -> renders real-time CPU, RAM, Disk bars with color-coded health states, core counts, GB usage, host/uptime pill, and offline stale badge
+  - Integration into `StatusScreen.tsx` with auto-polling (4s interval)
+  - E2E flow specification recorded in `.maestro/sysinfo_flow.yaml`
+  - `scripts/check-architecture.sh` -> 0 dependency violations across 46 modules (pure core preserved, mobile never imports agent)
+  - full suite: `pnpm verify` -> green (typecheck, lint, test, check-architecture)
+Evaluator: acceptance=5 correctness=5 boundaries=5 modularity=5 evidence=5 => avg 5.0 (PASS)
+Notes: Concludes Phase 02 (Terminal & telemetry). System health is now visible at a glance from mobile. Ready for Phase 03 (AI — Claude Code Bridge).
+
 ## 2026-10-07 — F005 Mobile terminal UI (emulator + accessory keys + scrollback + history) — COMPLETE
 Branch/commit: feat/F005
 Evidence:

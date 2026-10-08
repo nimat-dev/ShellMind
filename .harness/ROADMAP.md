@@ -4,7 +4,7 @@ All features across all phases, with permanent ids and status. Source of truth f
 Statuses: `NOT STARTED` · `IN PROGRESS` · `BLOCKED` · `IN REVIEW` · `COMPLETE` · `DEPRECATED`.
 Keep exactly one feature `IN PROGRESS`. Full acceptance criteria live in each `phases/PHASE-XX-*.md`.
 
-**Progress**: 4 / 12 COMPLETE (33%)
+**Progress**: 5 / 12 COMPLETE (42%)
 
 ## Phase 00 — De-risk
 - [x] **F000** — spike: headless Claude Code on subscription (no key) + interceptable permission prompt — `COMPLETE`
@@ -17,7 +17,7 @@ Keep exactly one feature `IN PROGRESS`. Full acceptance criteria live in each `p
 ## Phase 02 — Terminal & telemetry
 - [x] **F004** — PTY in agent (node-pty): stream output, input, resize, exit — `COMPLETE`
 - [x] **F005** — mobile terminal UI (emulator + accessory keys + scrollback + history) — `COMPLETE`
-- [ ] **F006** — system-info tiles (CPU / memory / disk) — `IN PROGRESS`
+- [x] **F006** — system-info tiles (CPU / memory / disk) — `COMPLETE`
 
 ## Phase 03 — AI (Claude Code bridge)
 - [ ] **F007** — Claude driver: spawn `claude -p` stream-json, parse → protocol, switchable project cwd — `NOT STARTED`

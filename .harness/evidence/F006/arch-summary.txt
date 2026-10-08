@@ -1,0 +1,5 @@
+=== Running check-architecture (dependency-cruiser) ===
+
+✔ no dependency violations found (46 modules, 114 dependencies cruised)
+
+✔ Layer boundaries respected. Architecture clean.

@@ -28,6 +28,10 @@ import {
   TermDataMessage,
   TermResizeMessage,
   TermExitMessage,
+  createSysRequestMessage,
+  createSysMetricsMessage,
+  SysRequestMessage,
+  SysMetricsMessage,
 } from "./index.js";
 
 describe("@shellmind/protocol", () => {
@@ -317,6 +321,42 @@ describe("@shellmind/protocol", () => {
         expect(exit.data.type).toBe("term.exit");
         expect(exit.data.payload.exitCode).toBe(0);
         expect(exit.data.payload.signal).toBe(15);
+      }
+    });
+  });
+
+  describe("System Telemetry Protocol Messages", () => {
+    it("round-trips sys.request and sys.metrics", () => {
+      const req = parseMessage<SysRequestMessage>(
+        serializeMessage(createSysRequestMessage({ diskPath: "/System/Volumes/Data" }))
+      );
+      expect(req.success).toBe(true);
+      if (req.success) {
+        expect(req.data.type).toBe("sys.request");
+        expect(req.data.payload.diskPath).toBe("/System/Volumes/Data");
+      }
+
+      const metrics = parseMessage<SysMetricsMessage>(
+        serializeMessage(
+          createSysMetricsMessage({
+            cpu: { percent: 14.5, cores: 8 },
+            memory: { usedBytes: 8589934592, totalBytes: 17179869184, percent: 50.0 },
+            disk: { usedBytes: 107374182400, totalBytes: 536870912000, percent: 20.0, mount: "/" },
+            uptimeSeconds: 3600,
+            platform: "darwin",
+            hostname: "MacBook-Pro.local",
+            collectedAt: Date.now(),
+          })
+        )
+      );
+      expect(metrics.success).toBe(true);
+      if (metrics.success) {
+        expect(metrics.data.type).toBe("sys.metrics");
+        expect(metrics.data.payload.cpu.percent).toBe(14.5);
+        expect(metrics.data.payload.cpu.cores).toBe(8);
+        expect(metrics.data.payload.memory.percent).toBe(50.0);
+        expect(metrics.data.payload.disk?.percent).toBe(20.0);
+        expect(metrics.data.payload.platform).toBe("darwin");
       }
     });
   });

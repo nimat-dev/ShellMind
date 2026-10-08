@@ -4,6 +4,7 @@ import {
   createTermOpenMessage,
   createTermInputMessage,
   createTermResizeMessage,
+  createSysRequestMessage,
   parseMessage,
   serializeMessage,
   type HelloAckMessage,
@@ -11,6 +12,8 @@ import {
   type PongMessage,
   type TermDataMessage,
   type TermExitMessage,
+  type SysMetricsPayload,
+  type SysMetricsMessage,
 } from "@shellmind/protocol";
 import type { PairingConfig } from "./pairing.js";
 
@@ -45,6 +48,7 @@ export class AgentClient {
   private listeners: Set<StateChangeListener> = new Set();
   private terminalDataListeners: Set<(data: string) => void> = new Set();
   private terminalExitListeners: Set<(exitCode: number, signal?: number) => void> = new Set();
+  private sysMetricsListeners: Set<(metrics: SysMetricsPayload) => void> = new Set();
 
   private state: ClientState = {
     status: "disconnected",
@@ -109,6 +113,22 @@ export class AgentClient {
     if (!this.socket || this.state.status !== "online") return;
     const msg = createTermResizeMessage(
       { cols, rows },
+      { sessionId: this.state.sessionId ?? undefined }
+    );
+    this.socket.send(serializeMessage(msg));
+  }
+
+  public onSystemMetrics(listener: (metrics: SysMetricsPayload) => void): () => void {
+    this.sysMetricsListeners.add(listener);
+    return () => {
+      this.sysMetricsListeners.delete(listener);
+    };
+  }
+
+  public requestSystemMetrics(diskPath?: string): void {
+    if (!this.socket || this.state.status !== "online") return;
+    const msg = createSysRequestMessage(
+      { diskPath },
       { sessionId: this.state.sessionId ?? undefined }
     );
     this.socket.send(serializeMessage(msg));
@@ -283,6 +303,14 @@ export class AgentClient {
       const termExit = message as TermExitMessage;
       for (const listener of this.terminalExitListeners) {
         listener(termExit.payload.exitCode, termExit.payload.signal);
+      }
+      return;
+    }
+
+    if (message.type === "sys.metrics") {
+      const sysMetrics = message as SysMetricsMessage;
+      for (const listener of this.sysMetricsListeners) {
+        listener(sysMetrics.payload);
       }
       return;
     }
