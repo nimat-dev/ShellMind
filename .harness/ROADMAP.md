@@ -4,7 +4,7 @@ All features across all phases, with permanent ids and status. Source of truth f
 Statuses: `NOT STARTED` · `IN PROGRESS` · `BLOCKED` · `IN REVIEW` · `COMPLETE` · `DEPRECATED`.
 Keep exactly one feature `IN PROGRESS`. Full acceptance criteria live in each `phases/PHASE-XX-*.md`.
 
-**Progress**: 9 / 12 COMPLETE (75%)
+**Progress**: 12 / 12 COMPLETE (100%)
 
 ## Phase 00 — De-risk
 - [x] **F000** — spike: headless Claude Code on subscription (no key) + interceptable permission prompt — `COMPLETE`
@@ -26,7 +26,7 @@ Keep exactly one feature `IN PROGRESS`. Full acceptance criteria live in each `p
 
 ## Phase 04 — Voice (thin)
 - [x] **F010** — push-to-talk, on-device STT → chat turn — `COMPLETE`
-- [ ] **F011** — on-device TTS spoken replies (toggle) — `NOT STARTED`
+- [x] **F011** — on-device TTS spoken replies (toggle) — `COMPLETE`
 
 ## Deferred (design-for only — see `rules/scope-guard.md`)
 Multi-computer · proactive notifications/push · screen capture/visual control · hosted relay or

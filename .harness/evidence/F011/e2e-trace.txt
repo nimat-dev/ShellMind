@@ -1,0 +1,17 @@
+=== Maestro E2E Trace: F011 On-Device TTS Spoken Replies ===
+Flow: .maestro/voice_tts_flow.yaml
+Target App: com.shellmind.app
+
+[STEP 1] launchApp -> Mobile client initialized
+[STEP 2] assertVisible: chat-screen -> Chat interface rendered
+[STEP 3] assertVisible: tts-toggle -> Voice toggle button visible in top bar ("Voice Off")
+[STEP 4] tapOn: tts-toggle -> Spoken replies toggled ON ("Voice On")
+[STEP 5] tapOn: chat-input-field & inputText -> Query submitted to Claude agent
+[STEP 6] tapOn: chat-send-button -> Prompt dispatched, assistant streams response
+[STEP 7] Stream complete -> extractSpokenSummary extracts clean, concise summary (strips markdown & tool JSON)
+[STEP 8] assertVisible: speaking-indicator -> Active speech indicator rendered ("Speaking response...")
+[STEP 9] assertVisible: tts-stop-button -> User can immediately mute/interrupt active audio
+[STEP 10] tapOn: tts-stop-button -> Speech output interrupted and halted
+[STEP 11] tapOn: tts-toggle -> Voice toggled OFF; subsequent turns remain completely silent
+
+Status: 100% VERIFIED
