@@ -1,52 +1,50 @@
-# Sprint Contract — F001: Monorepo + protocol core + scripts
+# Sprint Contract — F002: Agent daemon + tailnet transport + device-token auth
 
-Feature: F001 — Monorepo + protocol core + scripts
+Feature: F002 — Agent daemon + tailnet transport + device-token auth
 Phase: Phase 01 — Foundation (prove the pipe)
 Date: 2026-10-07
 
 ## 1. Scope & Acceptance Criteria
-- [x] pnpm workspace with `packages/protocol`, `packages/agent`, `packages/mobile`; TS strict mode across all; shared base tsconfig.
-- [x] `@shellmind/protocol` exports the message envelope + zod schemas for `ping`/`pong` and the `error` message; a pure round-trip (parse→validate→serialize) unit test passes.
-- [x] `scripts/init.sh` and `scripts/check-architecture.sh` exist and run; `check-architecture` runs dependency-cruiser against the rules in `rules/layer-boundaries.md` and passes on the skeleton (and would fail on a seeded violation — proven with throwaway test case).
-- [x] CI workflow (`.github/workflows/ci.yml`) runs typecheck + lint + test + check-architecture on push.
-- [x] Edge/error cases from §2 covered by tests: malformed JSON, oversized message, unknown message type, missing required envelope fields.
-- [x] E2E: N/A — no user-facing flow yet (pure protocol library + tooling scaffold).
-- [x] Boundary invariants: `check-architecture` passes; `packages/protocol` imports nothing with I/O (pure core).
-- [x] No regressions: full verify (typecheck + lint + test + check-architecture) passes with zero errors.
+- [x] `shellmind` daemon binds a transport server on the **tailnet interface only** (not `0.0.0.0`); refuses to start if no tailnet interface is found (clear, actionable error).
+- [x] `Transport` interface defined in agent core with a `tailnet` adapter registered (per `MODULES.md`); core never imports the concrete adapter directly.
+- [x] Device-token handshake: a connection with a valid paired token → `hello.ack` + `pong` on `ping`; **missing/invalid/revoked token → `hello.reject`, connection closed**, logged without leaking secrets.
+- [x] Local device registry persists paired devices (SHA-256 hashed token, mode 0600 file); `shellmind devices` lists + revokes.
+- [x] Wire messages in `@shellmind/protocol`: `hello`, `hello.ack`, `hello.reject` schemas added and registered.
+- [x] Edge/error cases from §2 covered: no token, wrong token, revoked device, malformed handshake, duplicate pairing, token literal never logged.
+- [x] E2E: N/A at mobile level (covered by F003); agent-side integration tests drive a real socket.
+- [x] Boundary invariants: `check-architecture` passes (I/O strictly in `src/adapters/**`, `src/core` has no I/O).
+- [x] Verification: full verify (`pnpm verify`) green, no regressions.
 
 ## 2. Edge cases & failure paths (from `verification/edge-cases.md`)
-- Malformed JSON string passed to parser -> returns typed parse failure error (`ERR_MALFORMED_JSON`).
-- Missing required envelope fields (e.g. missing `id`, `type`, or `payload`) -> Zod validation error (`ERR_INVALID_ENVELOPE` / `ERR_SCHEMA_VALIDATION`).
-- Oversized message exceeding MAX_MESSAGE_SIZE -> rejected with size limit error before expensive processing (`ERR_PAYLOAD_TOO_LARGE`).
-- Unknown message type -> validated against known message schemas; rejected with unrecognized message type error (`ERR_UNKNOWN_MESSAGE_TYPE`).
-- Protocol package isolation -> dependency-cruiser fails if any Node builtin or external I/O package is imported in `protocol` (proven with seeded violation).
+- Tailscale not running / no tailnet interface found -> Refuses to start, emits descriptive exit error explaining tailnet interface is missing.
+- Missing authentication token in hello handshake -> Returns `hello.reject` with `UNAUTHORIZED`, closes connection.
+- Invalid token hash mismatch -> Returns `hello.reject` with `FORBIDDEN`, closes connection.
+- Revoked device -> Device exists in registry but `revokedAt` is set; returns `hello.reject` with `REVOKED`, refuses connection.
+- Malformed handshake message (not valid `hello` frame) -> Returns `hello.reject` with `MALFORMED_HANDSHAKE`, terminates connection.
+- Token secrecy: raw token literals must never be saved to disk or logged to stdout/stderr (stored as SHA-256 hash).
+- File permissions: device registry file is written with strict 0600 (owner read/write only) permissions.
 
 ## 3. E2E scenario(s)
-N/A — Not user-facing (foundation scaffold & core protocol library). E2E testing starts in F003 with mobile client connection.
+N/A at mobile level. Agent-side integration tests drive a real network socket over localhost/tailnet test harness.
 
 ## 4. Plan (thinnest vertical slice)
-1. Initialize pnpm monorepo root: `package.json`, `pnpm-workspace.yaml`, `tsconfig.base.json`.
-2. Configure `packages/protocol` with Zod dependencies, schemas (`Envelope`, `PingMessage`, `PongMessage`, `ErrorMessage`), serializer, and parser.
-3. Configure `packages/agent` and `packages/mobile` package skeletons.
-4. Add Vitest and unit test suite in `packages/protocol`.
-5. Set up ESLint and dependency-cruiser configuration (`.dependency-cruiser.cjs`).
-6. Create `scripts/init.sh` and `scripts/check-architecture.sh`.
-7. Verify seeded architectural violation test.
-8. Add GitHub Actions CI workflow.
-9. Execute full verify: typecheck, lint, test, check-architecture.
+1. Add `hello`, `hello.ack`, `hello.reject` schemas to `@shellmind/protocol`.
+2. Define `Transport`, `TransportConnection`, and `TransportListener` interfaces in `packages/agent/src/core/transport.ts`.
+3. Implement `DeviceRegistry` adapter (`packages/agent/src/adapters/storage/device-registry.ts`) with SHA-256 hashing and 0600 file mode.
+4. Implement tailnet interface detection and WebSocket/TCP server adapter in `packages/agent/src/adapters/transport/tailnet.ts`.
+5. Implement daemon server core (`packages/agent/src/core/daemon.ts`) coordinating transport, handshake, and message dispatch.
+6. Implement CLI commands (`shellmind pair`, `shellmind devices`, `shellmind dev`, `shellmind start/stop/status`) in `packages/agent/src/cli.ts`.
+7. Write unit and integration tests covering valid handshake, bad token, revoked device, malformed handshake, and secret leak checks.
+8. Verify layer boundaries with `pnpm check-architecture` and full suite with `pnpm verify`.
 
 ## 5. Out of scope (parked, not built)
-- Transport socket servers or clients (F002).
-- Terminal PTY handling (F004).
-- Claude Code subprocess driver (F007).
+- Mobile UI and QR scanner (F003).
+- Terminal PTY streaming (F004).
+- Claude Code process execution (F007).
 
 ## 6. New dependencies (with justification)
-- `zod`: Schema declaration and validation for pure core protocol (`packages/protocol`).
-- `vitest`: Fast TypeScript unit test runner for the monorepo.
-- `typescript`: Strict type checking across workspace packages.
-- `dependency-cruiser`: Mechanically enforces layer boundaries in `rules/layer-boundaries.md`.
-- `eslint` + `typescript-eslint`: Code linting.
+- `ws` in `packages/agent` for WebSocket transport server.
+- `@types/ws` in devDependencies.
 
 ## 7. Risks
-- Workspace dependency linking issues: ensure `pnpm-workspace.yaml` correctly resolves `"@shellmind/protocol": "workspace:*"`.
-- Leakage of Node I/O into protocol: strictly verified by dependency-cruiser.
+- OS network interface naming differences: Tailscale interfaces can be named `tailscale0`, `utun*` with 100.x.y.z IP, or custom CGNAT range (100.64.0.0/10). Detect by both interface name patterns and 100.64.0.0/10 subnet match.

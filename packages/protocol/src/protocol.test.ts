@@ -4,6 +4,9 @@ import {
   createPingMessage,
   createPongMessage,
   createErrorMessage,
+  createHelloMessage,
+  createHelloAckMessage,
+  createHelloRejectMessage,
   generateMessageId,
   PROTOCOL_VERSION,
   parseMessage,
@@ -14,6 +17,7 @@ import {
   PingMessage,
   PongMessage,
   ErrorMessage,
+  HelloMessage,
 } from "./index.js";
 
 describe("@shellmind/protocol", () => {
@@ -54,6 +58,33 @@ describe("@shellmind/protocol", () => {
       expect(msg.payload.code).toBe("UNAUTHORIZED");
       expect(msg.payload.message).toBe("Invalid device token");
       expect(msg.payload.details).toEqual({ attempts: 3 });
+    });
+
+    it("creates valid Hello handshake messages", () => {
+      const hello = createHelloMessage({
+        deviceId: "dev_phone123",
+        token: "secret_tok_abc",
+        clientVersion: "1.0.0",
+        platform: "ios",
+      });
+      expect(hello.type).toBe("hello");
+      expect(hello.payload.deviceId).toBe("dev_phone123");
+      expect(hello.payload.token).toBe("secret_tok_abc");
+
+      const ack = createHelloAckMessage({
+        sessionId: "ses_sess1",
+        agentVersion: "0.1.0",
+        serverName: "ShellMind Agent",
+      });
+      expect(ack.type).toBe("hello.ack");
+      expect(ack.payload.sessionId).toBe("ses_sess1");
+
+      const reject = createHelloRejectMessage({
+        code: "UNAUTHORIZED",
+        message: "Token is invalid",
+      });
+      expect(reject.type).toBe("hello.reject");
+      expect(reject.payload.code).toBe("UNAUTHORIZED");
     });
   });
 
@@ -98,6 +129,24 @@ describe("@shellmind/protocol", () => {
         expect(result.data).toEqual(original);
         expect(result.data.type).toBe("error");
         expect(result.data.payload.code).toBe("CONNECTION_REFUSED");
+      }
+    });
+
+    it("serializes and parses Hello handshake messages correctly", () => {
+      const hello = createHelloMessage({
+        deviceId: "dev_iphone_1",
+        token: "pair_tok_999",
+        clientVersion: "1.0.0",
+        platform: "ios",
+      });
+      const serialized = serializeMessage(hello);
+      const result = parseMessage<HelloMessage>(serialized);
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data).toEqual(hello);
+        expect(result.data.type).toBe("hello");
+        expect(result.data.payload.deviceId).toBe("dev_iphone_1");
       }
     });
   });

@@ -18,6 +18,23 @@ Notes: <anything the next agent should know>
 
 <!-- entries go below, newest first -->
 
+## 2026-10-07 — F002 Agent daemon + tailnet transport + device-token auth — COMPLETE
+Branch/commit: feat/F002
+Evidence:
+  - `pnpm test` -> 25/25 tests pass (17 protocol tests + 8 agent integration tests)
+  - `packages/agent/src/agent.test.ts` -> validates live socket handshake, valid token auth -> hello.ack + pong, invalid token -> hello.reject (FORBIDDEN), revoked device -> hello.reject (REVOKED), premature message -> hello.reject (UNAUTHORIZED), malformed json rejection
+  - `packages/agent/src/cli.ts` -> `shellmind pair`, `shellmind devices`, `shellmind revoke`, `shellmind dev`, `shellmind status` functional
+  - `packages/agent/dist/cli.js dev` -> refuses to start when no tailscale interface detected
+  - `packages/agent/dist/cli.js status` -> reports tailnet status and paired device counts
+  - `FileDeviceRegistry` -> writes mode 0600 file permissions, stores SHA-256 hashed tokens, raw token never written to disk
+  - `TailnetTransportServer` -> strictly refuses to bind to `0.0.0.0`, detects Tailscale CGNAT IPs (100.64.0.0/10)
+  - `scripts/check-architecture.sh` -> 0 dependency violations across 24 modules (`src/core` has 0 I/O imports, pure protocol has 0 I/O imports)
+  - full suite: `pnpm verify` -> green (typecheck, lint, test, check-architecture)
+  - e2e: N/A at mobile level (covered by F003); agent-side integration test drives real WebSocket socket
+  - edge cases: no token, wrong token, revoked device, malformed handshake, duplicate pairing, token literal never logged or persisted in plaintext
+Evaluator: acceptance=5 correctness=5 boundaries=5 modularity=5 evidence=5 => avg 5.0 (PASS)
+Notes: MessageHandler registry implemented in `AgentDaemon` adhering to MODULES.md §1. Transport abstraction allows future relay/p2p transports.
+
 ## 2026-10-07 — F001 Monorepo + protocol core + scripts — COMPLETE
 Branch/commit: feat/F001
 Evidence:

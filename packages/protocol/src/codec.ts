@@ -2,11 +2,22 @@ import { defaultRegistry, MessageRegistry } from "./registry.js";
 import { PingMessage } from "./messages/ping.js";
 import { PongMessage } from "./messages/pong.js";
 import { ErrorMessage } from "./messages/error.js";
+import {
+  HelloMessage,
+  HelloAckMessage,
+  HelloRejectMessage,
+} from "./messages/hello.js";
 
 /** Max permitted serialized message length in bytes (1 MB default) */
 export const DEFAULT_MAX_MESSAGE_BYTES = 1024 * 1024; // 1 MB
 
-export type KnownMessage = PingMessage | PongMessage | ErrorMessage;
+export type KnownMessage =
+  | PingMessage
+  | PongMessage
+  | ErrorMessage
+  | HelloMessage
+  | HelloAckMessage
+  | HelloRejectMessage;
 
 export type ProtocolErrorCode =
   | "ERR_MALFORMED_JSON"
