@@ -1,0 +1,20 @@
+{
+  "expo": {
+    "name": "ShellMind",
+    "slug": "shellmind",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "backgroundColor": "#0d1117"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.shellmind.app",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "ShellMind requires microphone access for push-to-talk voice commands.",
+        "NSSpeechRecognitionUsageDescription": "ShellMind requires speech recognition to transcribe voice prompts on-device."
+      }
+    }
+  }
+}

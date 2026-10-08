@@ -10,6 +10,9 @@ import {
   NodeSysInfoProvider,
   LocalClaudeDriver,
   NodeProjectManager,
+  PermissionBridge,
+  FileAuditLogger,
+  FileTranscriptStore,
   findTailnetInterface,
 } from "./index.js";
 
@@ -129,6 +132,12 @@ async function handleDev(args: string[]): Promise<void> {
 
   const registry = new FileDeviceRegistry(getDefaultRegistryPath());
   const transport = new TailnetTransportServer({ allowLocalhost });
+  const baseDataDir = path.dirname(getDefaultRegistryPath());
+  const auditLogger = new FileAuditLogger({
+    filePath: path.join(baseDataDir, "audit.log"),
+  });
+  const permissionBridge = new PermissionBridge({ auditLogger });
+  const transcriptStore = new FileTranscriptStore(path.join(baseDataDir, "transcripts"));
   const daemon = new AgentDaemon(transport, registry, {
     agentVersion: "0.1.0",
     serverName: os.hostname(),
@@ -136,6 +145,9 @@ async function handleDev(args: string[]): Promise<void> {
     sysInfoProvider: new NodeSysInfoProvider(),
     claudeDriver: new LocalClaudeDriver(),
     projectManager: new NodeProjectManager(),
+    permissionBridge,
+    auditLogger,
+    transcriptStore,
   });
 
   console.log("=== ShellMind Agent Daemon ===");
