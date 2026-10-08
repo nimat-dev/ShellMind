@@ -33,6 +33,10 @@ import {
   PermRequestMessage,
   PermResponseMessage,
 } from "./messages/permission.js";
+import {
+  ChatHistoryReqMessage,
+  ChatHistoryRespMessage,
+} from "./messages/chat.js";
 
 /** Max permitted serialized message length in bytes (1 MB default) */
 export const DEFAULT_MAX_MESSAGE_BYTES = 1024 * 1024; // 1 MB
@@ -59,7 +63,9 @@ export type KnownMessage =
   | ProjectSetMessage
   | ProjectSetRespMessage
   | PermRequestMessage
-  | PermResponseMessage;
+  | PermResponseMessage
+  | ChatHistoryReqMessage
+  | ChatHistoryRespMessage;
 
 export type ProtocolErrorCode =
   | "ERR_MALFORMED_JSON"

@@ -1,75 +1,66 @@
-# Sprint Contract — F008: Permission bridge + confirm UI + allowlist + audit log
+# Sprint Contract — F009: Chat UI + session continuity + project picker
 
-Feature: F008 — Permission bridge + confirm UI + allowlist + audit log
+Feature: F009 — Chat UI + session continuity + project picker
 Phase: Phase 03 — AI (Claude Code bridge)
 Date: 2026-10-08
 
 ## 1. Scope & Acceptance Criteria
 - [x] Wire protocol messages in `@shellmind/protocol`:
-  - `RiskHint` enum: `"low" | "medium" | "high"`.
-  - `classifyRisk()` pure function: detects read-only operations ("low"), modifications ("medium"), and destructive/dangerous patterns ("high").
-  - `isReadonlyCommand()` pure allowlist checker.
-  - `perm.request`: Agent permission query (`requestId`, `toolName`, `command`, `input`, `cwd`, `riskHint`, `description`).
-  - `perm.response`: Phone permission decision (`requestId`, `decision: "allow" | "deny"`, `rememberForSession?: boolean`).
+  - `ChatTurn` schema: `id`, `role: "user" | "assistant"`, `text?: string`, `toolEvents?: AgentStreamEvent[]`, `timestamp: number`, `status?: "streaming" | "done" | "aborted" | "error"`.
+  - `chat.history.req`: Client history query (`projectCwd?: string`, `limit?: number`).
+  - `chat.history.resp`: Agent history payload (`currentCwd: string`, `turns: ChatTurn[]`).
 - [x] Pure core interfaces in `@shellmind/agent`:
-  - `IPermissionBridge`, `PermissionRequest`, `PermissionDecision` in `src/core/permission.ts`.
-  - `IAuditLogger`, `AuditEntry` in `src/core/audit.ts`.
-  - Pure core contains 0 Node builtins or I/O imports (`check-architecture.sh` enforced).
+  - `ITranscriptStore` in `src/core/transcript.ts` (0 Node builtins or I/O imports).
+  - Methods: `appendTurn()`, `getTranscript()`, `clearTranscript()`.
 - [x] Concrete adapters in `@shellmind/agent`:
-  - `PermissionBridge` in `src/adapters/permission/bridge.ts`:
-    - Handles pending permission request promises.
-    - Applies auto-allowlist for pure read-only commands without interrupting the human.
-    - Manages session-scoped allowlist for "remember for session".
-    - Enforces timeout (e.g. 60s -> default deny).
-    - Idempotent resolution (double-tap safe).
-    - `denyAllPending()` on disconnect, abort, or device revocation.
-  - `FileAuditLogger` in `src/adapters/audit/file-audit.ts`:
-    - Append-only file logger written **before** execution of any approved tool/command.
-    - Stores `ts`, `deviceId`, `sessionId`, `toolName`, `command`, `decision`, `riskHint`.
-    - Never truncated.
-  - Integration with `LocalClaudeDriver` and `AgentDaemon`:
-    - Hooks into Claude Code's control requests (`can_use_tool`).
-    - Dispatches `perm.request` over the wire.
-- [x] Mobile client & UI in `@shellmind/mobile`:
-  - `AgentClient` methods: `onPermissionRequest()`, `respondPermission()`.
-  - `PermissionCard.tsx` React Native component:
-    - Displays tool name, command / input, cwd, and risk hint pill (Green for LOW, Amber for MEDIUM, Red for HIGH).
-    - Allow / Deny buttons and "Remember for session" checkbox.
+  - `FileTranscriptStore` in `src/adapters/storage/file-transcript.ts`:
+    - Local JSON file storage under `~/.shellmind/transcripts/` (mode 0600).
+    - Capped at max N turns (e.g. 100) to guarantee bounded storage.
+    - Project context isolation (hash/slug key per directory path).
+  - `AgentDaemon` integration:
+    - Appends user and assistant turns to transcript upon execution.
+    - Handles `chat.history.req` and replies with `chat.history.resp`.
+    - Automatically switches transcript context when `project.set` changes cwd.
+- [x] Mobile Client, Tool Renderers & UI in `@shellmind/mobile`:
+  - `AgentClient` methods: `requestChatHistory()`, `onChatHistory()`.
+  - `ToolEventRenderer` registry in `packages/mobile/src/renderers/`:
+    - `BashRenderer`: terminal output with command and status pill.
+    - `FileRenderer`: file read/write/edit display.
+    - `SearchRenderer`: glob/grep patterns and findings.
+    - `DefaultRenderer`: fallback JSON card for unrecognized tools.
+  - `ChatScreen.tsx` component:
+    - Streaming message timeline (user bubbles, assistant streaming text, tool renderer cards).
+    - Project picker dropdown (calling `project.list` and `project.set`).
+    - Abort button to cancel in-flight turns.
+    - Session continuity: on reconnect, requests chat history and resumes transcript without duplicates.
 - [x] Edge cases covered (from `verification/edge-cases.md`):
-  - Chained / obfuscated commands (`a && rm -rf`, `$(...)`, aliases) -> flagged HIGH risk.
-  - Timeout -> treated as deny.
-  - Client disconnects mid-prompt -> all pending prompts denied + turn aborted.
-  - Double-tap allow -> idempotent.
-  - "Remember for session" -> scoped to session only, resets on next connection.
-  - Revoked device mid-session -> all pending prompts denied immediately.
-  - Audit log -> append-only, never truncated, written before execution.
+  - Reconnect mid-stream resumes transcript without duplicate bubbles.
+  - Empty or huge transcript handled safely (capped size).
+  - Switching project mid-session resets context to that project's clean transcript.
+  - Unknown/custom tool types fall back gracefully to default renderer.
+  - Backgrounding/reconnecting during in-flight turn preserves state.
 - [x] Architecture boundaries: pure core contains 0 I/O; `check-architecture.sh` reports 0 violations.
 - [x] Full verification suite passing (`pnpm verify`).
 
 ## 2. Edge cases & failure paths (from `verification/edge-cases.md`)
-- Command chaining with dangerous operations (`echo hi && rm -rf /`) -> classifier marks HIGH risk.
-- Permission request timeout -> automatically resolved to "deny".
-- Disconnect during pending permission -> all pending requests rejected, child process killed.
-- Duplicate `perm.response` -> second response ignored gracefully (idempotent).
-- Audit log write failure -> surfaces error, does not run tool without audit record.
-- Device revocation while permission pending -> denies pending immediately.
+- Reconnect during turn: transcript deduplication by turn `id`.
+- Empty transcript: renders empty chat state without crashes.
+- Corrupted transcript on disk: logs error, recovers with empty transcript.
+- Very long transcript: capped at max turns to prevent memory/disk exhaustion.
+- Unknown tool type: renders safely using `DefaultRenderer`.
+- Rapid project switching: updates active cwd and loads corresponding transcript cleanly.
 
 ## 3. E2E scenario(s)
-1. Claude Code turn triggers tool use requiring permission.
-2. Agent evaluates allowlist:
-   - If read-only command in allowlist -> auto-approved and audited.
-   - If write/destructive -> routes `perm.request` to mobile.
-3. Mobile renders `PermissionCard` with tool, command, and RiskHint badge.
-4. User taps "Allow" (or "Deny") -> `perm.response` sent to agent.
-5. Agent records to append-only audit log before releasing tool to execute.
-6. Mobile receives stream output.
+1. User opens ChatScreen: project picker loads available projects (`project.list`).
+2. User selects project: switches cwd (`project.set`) and fetches project transcript (`chat.history.req`).
+3. User prompts: prompt sent (`agent.prompt`), stream renders assistant text and tool events.
+4. Client disconnects and reconnects: client fetches transcript (`chat.history.req`) and recovers conversation history without duplicates.
 
 ## 4. Plan (thinnest vertical slice)
-1. Protocol schemas in `packages/protocol/src/messages/permission.ts` & risk classifier.
-2. Core interfaces in `packages/agent/src/core/permission.ts` and `src/core/audit.ts`.
-3. Adapters in `packages/agent/src/adapters/permission/bridge.ts` and `src/adapters/audit/file-audit.ts`.
-4. Integration with `LocalClaudeDriver` and `AgentDaemon`.
-5. Mobile client methods in `packages/mobile/src/client.ts` and `PermissionCard.tsx` UI.
-6. Comprehensive test battery (protocol, driver, daemon, mobile).
-7. Maestro flow in `.maestro/permission_flow.yaml`.
-8. Full verification (`pnpm verify`) and PR review/merge.
+1. Protocol schemas in `packages/protocol/src/messages/chat.ts` and registry.
+2. Core `ITranscriptStore` in `packages/agent/src/core/transcript.ts`.
+3. Adapter `FileTranscriptStore` in `packages/agent/src/adapters/storage/file-transcript.ts` and daemon wiring.
+4. Tool renderer registry and `ChatScreen.tsx` in `packages/mobile`.
+5. Tests (protocol, transcript store, daemon integration, mobile client and renderers).
+6. Maestro flow in `.maestro/chat_flow.yaml`.
+7. Monorepo verification (`pnpm verify`) and PR review/merge.

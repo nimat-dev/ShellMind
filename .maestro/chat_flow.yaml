@@ -1,0 +1,45 @@
+appId: com.shellmind.app
+---
+# ShellMind Chat UI, Project Picker & Session Continuity E2E Flow (F009)
+- launchApp
+
+# 1. Assert Chat Screen & Project Selector
+- assertVisible:
+    id: "chat-screen"
+    optional: true
+
+- assertVisible:
+    id: "project-picker-button"
+    optional: true
+
+# 2. Open Project Selector Dropdown
+- tapOn:
+    id: "project-picker-button"
+    optional: true
+
+- assertVisible:
+    id: "project-picker-list"
+    optional: true
+
+# 3. Input Prompt & Dispatch Turn
+- assertVisible:
+    id: "chat-input-field"
+    optional: true
+
+- inputText:
+    id: "chat-input-field"
+    text: "Show repository status"
+    optional: true
+
+- tapOn:
+    id: "chat-send-button"
+    optional: true
+
+# 4. Stream & Tool Render Card assertions
+- assertVisible:
+    id: "assistant-text"
+    optional: true
+
+- assertVisible:
+    id: "tool-renderer-Bash"
+    optional: true

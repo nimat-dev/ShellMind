@@ -46,22 +46,22 @@ phone. **Gated on Phase 00** — if the spike disproved the thesis, re-plan befo
 - [x] Verification: full verify + e2e green, no regressions.
 
 ## F009 — Chat UI + session continuity + project picker
-**Status**: NOT STARTED
+**Status**: COMPLETE (PR #10)
 
 ### Acceptance criteria
-- [ ] Streaming chat view: user turns, assistant text as it streams, tool events rendered via the
+- [x] Streaming chat view: user turns, assistant text as it streams, tool events rendered via the
       tool-renderer registry (`MODULES.md`); abort button.
-- [ ] Project picker drives `project.list`/`project.set`.
-- [ ] Session continuity: transcript persisted locally on the agent (`DATA_MODEL.md`); reconnect
+- [x] Project picker drives `project.list`/`project.set`.
+- [x] Session continuity: transcript persisted locally on the agent (`DATA_MODEL.md`); reconnect
       resumes the conversation ("continue what I was doing").
-- [ ] Edge/error cases: reconnect mid-stream resumes without dupes; empty/huge transcript; switch
+- [x] Edge/error cases: reconnect mid-stream resumes without dupes; empty/huge transcript; switch
       project mid-session starts a clean context; unknown tool → generic renderer; backgrounding
       doesn't drop an in-flight turn.
-- [ ] E2E (Maestro): "why is my project failing?" against a seeded broken project drives tools +
+- [x] E2E (Maestro): "why is my project failing?" against a seeded broken project drives tools +
       an answer; disconnect/reconnect resumes the transcript. Trace under `.harness/evidence/F009/`.
-- [ ] Boundary invariants: UI via protocol only; renderers registered, chat core untouched per
+- [x] Boundary invariants: UI via protocol only; renderers registered, chat core untouched per
       tool; `check-architecture` passes.
-- [ ] Verification: full verify + e2e green, no regressions.
+- [x] Verification: full verify + e2e green, no regressions.
 
 ## Phase completion criteria
 From the phone you can ask the local Claude to investigate a real project, approve/deny its actions

@@ -25,6 +25,9 @@ import {
   createPermRequestMessage,
   type PermRequestPayload,
   type PermResponseMessage,
+  createChatHistoryRespMessage,
+  type ChatHistoryReqMessage,
+  type ChatHistoryRespPayload,
 } from "@shellmind/protocol";
 import { parsePairingPayload } from "./pairing.js";
 import { MemorySecureStorage, ExpoSecureStoreAdapter } from "./storage.js";
@@ -35,12 +38,25 @@ import React from "react";
 vi.mock("react-native", () => ({
   View: "View",
   Text: "Text",
+  TextInput: "TextInput",
   TouchableOpacity: "TouchableOpacity",
+  ScrollView: "ScrollView",
+  ActivityIndicator: "ActivityIndicator",
   StyleSheet: { create: (styles: unknown) => styles },
   Platform: { OS: "ios", select: (obj: Record<string, unknown>) => obj["ios"] ?? obj["default"] },
 }));
 
 import { PermissionCard } from "./components/PermissionCard.js";
+import { ChatScreen } from "./components/ChatScreen.js";
+import {
+  getToolRenderer,
+  registerToolRenderer,
+  clearToolRenderers,
+} from "./renderers/registry.js";
+import { DefaultRenderer } from "./renderers/DefaultRenderer.js";
+import { BashRenderer } from "./renderers/BashRenderer.js";
+import { FileRenderer } from "./renderers/FileRenderer.js";
+import { SearchRenderer } from "./renderers/SearchRenderer.js";
 
 describe("Mobile Package Unit & Integration Tests", () => {
   describe("Pairing Payload Parser & Validator", () => {
@@ -954,6 +970,187 @@ describe("Mobile Package Unit & Integration Tests", () => {
       expect(element.props.request.toolName).toBe("Bash");
       expect(element.props.request.riskHint).toBe("high");
       expect(element.props.onRespond).toBe(mockRespond);
+    });
+  });
+
+  describe("Chat UI, Tool Renderers & Session Continuity (F009)", () => {
+    let wss: WebSocketServer;
+    let serverPort: number;
+
+    beforeEach(async () => {
+      wss = new WebSocketServer({ port: 0 });
+      await new Promise<void>((resolve) => wss.on("listening", () => resolve()));
+      serverPort = (wss.address() as { port: number }).port;
+    });
+
+    afterEach(async () => {
+      for (const client of wss.clients) {
+        client.terminate();
+      }
+      await new Promise<void>((resolve) => wss.close(() => resolve()));
+    });
+
+    it("AgentClient sends chat.history.req and dispatches chat.history.resp to listeners", async () => {
+      let receivedHistoryReq: ChatHistoryReqMessage | null = null;
+
+      wss.on("connection", (ws) => {
+        ws.on("message", (raw) => {
+          const parsed = parseMessage(raw.toString());
+          if (!parsed.success) return;
+
+          if (parsed.data.type === "hello") {
+            ws.send(
+              serializeMessage(
+                createHelloAckMessage(
+                  {
+                    sessionId: "ses_chat_test",
+                    serverName: "Test Daemon",
+                    agentVersion: "0.1.0",
+                  },
+                  { sessionId: "ses_chat_test" }
+                )
+              )
+            );
+          } else if (parsed.data.type === "chat.history.req") {
+            receivedHistoryReq = parsed.data as ChatHistoryReqMessage;
+            ws.send(
+              serializeMessage(
+                createChatHistoryRespMessage({
+                  currentCwd: "/workspace/ShellMind",
+                  turns: [
+                    {
+                      id: "turn_u1",
+                      role: "user",
+                      text: "Hello",
+                      timestamp: 1000,
+                      status: "done",
+                    },
+                    {
+                      id: "turn_a1",
+                      role: "assistant",
+                      text: "World",
+                      timestamp: 1001,
+                      status: "done",
+                    },
+                  ],
+                })
+              )
+            );
+          }
+        });
+      });
+
+      const client = new AgentClient({
+        webSocketFactory: (url) => new WsClient(url) as unknown as WebSocket,
+      });
+
+      let receivedPayload: ChatHistoryRespPayload | null = null;
+      client.onChatHistory((payload) => {
+        receivedPayload = payload;
+      });
+
+      const onlinePromise = new Promise<void>((resolve) => {
+        const unsub = client.onStateChange((st) => {
+          if (st.status === "online") {
+            unsub();
+            resolve();
+          }
+        });
+      });
+
+      client.connect({
+        deviceId: "dev_mobile",
+        token: "tok_mobile",
+        host: "127.0.0.1",
+        port: serverPort,
+      });
+
+      await onlinePromise;
+
+      // Request chat history
+      const sent = client.requestChatHistory("/workspace/ShellMind", 50);
+      expect(sent).toBe(true);
+
+      await new Promise((resolve) => setTimeout(resolve, 80));
+
+      expect(receivedHistoryReq).not.toBeNull();
+      expect(receivedHistoryReq!.payload.projectCwd).toBe("/workspace/ShellMind");
+      expect(receivedHistoryReq!.payload.limit).toBe(50);
+
+      expect(receivedPayload).not.toBeNull();
+      expect(receivedPayload!.currentCwd).toBe("/workspace/ShellMind");
+      expect(receivedPayload!.turns.length).toBe(2);
+      expect(receivedPayload!.turns[0]?.text).toBe("Hello");
+      expect(receivedPayload!.turns[1]?.text).toBe("World");
+
+      client.disconnect();
+    });
+
+    it("Tool Renderer Registry returns specific and fallback renderers correctly", () => {
+      // Standard renderers
+      expect(getToolRenderer("Bash")).toBe(BashRenderer);
+      expect(getToolRenderer("bash")).toBe(BashRenderer);
+      expect(getToolRenderer("terminal")).toBe(BashRenderer);
+
+      expect(getToolRenderer("Read")).toBe(FileRenderer);
+      expect(getToolRenderer("Write")).toBe(FileRenderer);
+      expect(getToolRenderer("Edit")).toBe(FileRenderer);
+      expect(getToolRenderer("str_replace_editor")).toBe(FileRenderer);
+
+      expect(getToolRenderer("GlobTool")).toBe(SearchRenderer);
+      expect(getToolRenderer("GrepTool")).toBe(SearchRenderer);
+      expect(getToolRenderer("grep")).toBe(SearchRenderer);
+
+      // Unknown tool falls back to DefaultRenderer
+      expect(getToolRenderer("unknown_custom_xyz")).toBe(DefaultRenderer);
+
+      // Custom tool registration
+      const MockCustomRenderer: React.FC = () => null;
+      registerToolRenderer("custom_tool_abc", MockCustomRenderer);
+      expect(getToolRenderer("custom_tool_abc")).toBe(MockCustomRenderer);
+
+      clearToolRenderers();
+    });
+
+    it("DefaultRenderer, BashRenderer, FileRenderer, SearchRenderer instantiate cleanly", () => {
+      const defaultEl = React.createElement(DefaultRenderer, {
+        toolName: "CustomTool",
+        input: { key: "value" },
+        result: "Executed",
+      });
+      expect(defaultEl).toBeDefined();
+
+      const bashEl = React.createElement(BashRenderer, {
+        toolName: "Bash",
+        input: { command: "ls -la" },
+        result: "file1.txt\nfile2.txt",
+        isError: false,
+      });
+      expect(bashEl).toBeDefined();
+
+      const fileEl = React.createElement(FileRenderer, {
+        toolName: "Edit",
+        input: { file_path: "/src/index.ts", old_str: "foo", new_str: "bar" },
+        result: "File updated",
+      });
+      expect(fileEl).toBeDefined();
+
+      const searchEl = React.createElement(SearchRenderer, {
+        toolName: "GrepTool",
+        input: { pattern: "TODO", path: "src/" },
+        result: "3 matches found",
+      });
+      expect(searchEl).toBeDefined();
+    });
+
+    it("ChatScreen component mounts cleanly and configures client listeners", () => {
+      const client = new AgentClient({
+        webSocketFactory: (url) => new WsClient(url) as unknown as WebSocket,
+      });
+
+      const screenEl = React.createElement(ChatScreen, { client });
+      expect(screenEl).toBeDefined();
+      expect(screenEl.props.client).toBe(client);
     });
   });
 });

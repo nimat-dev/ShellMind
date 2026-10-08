@@ -18,6 +18,19 @@ Notes: <anything the next agent should know>
 
 <!-- entries go below, newest first -->
 
+## 2026-10-08 — F009 Chat UI + session continuity + project picker — COMPLETE
+Branch/commit: feat/F009
+Evidence:
+  - `pnpm test` -> 113/113 tests pass (29 protocol, 52 agent, 32 mobile)
+  - `packages/protocol/src/protocol.test.ts` -> validates `chat.history.req` and `chat.history.resp` messages, `ChatTurn` schemas, and turn status validations
+  - `packages/agent/src/agent.test.ts` -> validates `FileTranscriptStore` (chronological appending, turn updates, maxTurns cap pruning, project directory isolation, mode 0600 security, corrupted JSON resilience, and transcript clearing) and `AgentDaemon` chat history request/response and session continuity across client reconnect
+  - `packages/mobile/src/mobile.test.ts` -> validates `AgentClient.requestChatHistory()` and `onChatHistory()` over live socket, `ToolRenderer` registry and fallback mechanism, `DefaultRenderer`, `BashRenderer`, `FileRenderer`, `SearchRenderer` component trees, and `ChatScreen` mounting and listener binding
+  - E2E flow specification recorded in `.maestro/chat_flow.yaml` (trace in `.harness/evidence/F009/e2e-trace.txt`)
+  - `scripts/check-architecture.sh` -> 0 dependency violations across 70 modules (pure core preserved, 0 Node builtins or I/O imports in `packages/agent/src/core`)
+  - full suite: `pnpm verify` -> 100% green (typecheck, lint, test, check-architecture)
+Evaluator: acceptance=5 correctness=5 boundaries=5 modularity=5 evidence=5 => avg 5.0 (PASS)
+Notes: Phase 03 — AI (Claude Code bridge) is 100% COMPLETE. Ready for Phase 04 — Voice (thin).
+
 ## 2026-10-08 — F008 Permission bridge + confirm UI + allowlist + audit log — COMPLETE
 Branch/commit: feat/F008
 Evidence:

@@ -11,6 +11,7 @@ import {
   createAgentStreamMessage,
   createProjectListRespMessage,
   createProjectSetRespMessage,
+  createChatHistoryRespMessage,
   type HelloMessage,
   type PingMessage,
   type TermOpenMessage,
@@ -19,9 +20,12 @@ import {
   type SysRequestMessage,
   type AgentPromptMessage,
   type AgentAbortMessage,
+  type AgentStreamEvent,
   type ProjectSetMessage,
   type PermResponseMessage,
   createPermRequestMessage,
+  type ChatHistoryReqMessage,
+  type ChatTurn,
   type KnownMessage,
 } from "@shellmind/protocol";
 import type { TransportServer, TransportConnection, TransportListener } from "./transport.js";
@@ -32,6 +36,7 @@ import type { IClaudeDriver } from "./claude.js";
 import type { IProjectManager } from "./project.js";
 import type { IPermissionBridge } from "./permission.js";
 import type { IAuditLogger } from "./audit.js";
+import type { ITranscriptStore } from "./transcript.js";
 
 export interface AgentDaemonConfig {
   agentVersion: string;
@@ -42,6 +47,7 @@ export interface AgentDaemonConfig {
   projectManager?: IProjectManager;
   permissionBridge?: IPermissionBridge;
   auditLogger?: IAuditLogger;
+  transcriptStore?: ITranscriptStore;
 }
 
 export interface AuthenticatedSession {
@@ -226,7 +232,18 @@ export class AgentDaemon {
       const promptMsg = message as AgentPromptMessage;
       const targetCwd =
         promptMsg.payload.cwd ??
-        (this.config.projectManager ? this.config.projectManager.getCurrentCwd() : undefined);
+        (this.config.projectManager ? this.config.projectManager.getCurrentCwd() : "");
+
+      if (this.config.transcriptStore) {
+        const userTurn: ChatTurn = {
+          id: promptMsg.id,
+          role: "user",
+          text: promptMsg.payload.prompt,
+          timestamp: promptMsg.ts ?? Date.now(),
+          status: "done",
+        };
+        await this.config.transcriptStore.appendTurn(targetCwd, userTurn);
+      }
 
       if (this.config.permissionBridge) {
         const bridge = this.config.permissionBridge as {
@@ -246,18 +263,56 @@ export class AgentDaemon {
         }
       }
 
-      await this.config.claudeDriver.runTurn({
-        prompt: promptMsg.payload.prompt,
-        cwd: targetCwd,
-        permissionBridge: this.config.permissionBridge,
-        onEvent: async (event) => {
-          const streamMsg = createAgentStreamMessage(
-            { event },
-            { sessionId: ctx.session.sessionId }
-          );
-          await ctx.send(streamMsg);
-        },
-      });
+      const assistantTurnId = `msg_ast_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+      let accumulatedText = "";
+      const accumulatedEvents: AgentStreamEvent[] = [];
+      let assistantStatus: ChatTurn["status"] = "streaming";
+
+      try {
+        await this.config.claudeDriver.runTurn({
+          prompt: promptMsg.payload.prompt,
+          cwd: targetCwd || undefined,
+          permissionBridge: this.config.permissionBridge,
+          onEvent: async (event) => {
+            accumulatedEvents.push(event);
+            if (event.type === "assistant_text") {
+              accumulatedText += event.text;
+            } else if (event.type === "done") {
+              if (!accumulatedText && event.result) {
+                accumulatedText = event.result;
+              }
+              assistantStatus = "done";
+            } else if (event.type === "aborted") {
+              assistantStatus = "aborted";
+            } else if (event.type === "error") {
+              assistantStatus = "error";
+            }
+
+            const streamMsg = createAgentStreamMessage(
+              { event },
+              { sessionId: ctx.session.sessionId }
+            );
+            await ctx.send(streamMsg);
+          },
+        });
+      } catch (err) {
+        if (assistantStatus === "streaming") {
+          assistantStatus = "error";
+        }
+        throw err;
+      } finally {
+        if (this.config.transcriptStore) {
+          const assistantTurn: ChatTurn = {
+            id: assistantTurnId,
+            role: "assistant",
+            text: accumulatedText || undefined,
+            toolEvents: accumulatedEvents.length > 0 ? accumulatedEvents : undefined,
+            timestamp: Date.now(),
+            status: assistantStatus === "streaming" ? "done" : assistantStatus,
+          };
+          await this.config.transcriptStore.appendTurn(targetCwd, assistantTurn);
+        }
+      }
     });
 
     this.registerHandler("agent.abort", async (message, _ctx) => {
@@ -313,6 +368,31 @@ export class AgentDaemon {
             success,
             currentCwd,
             error: success ? undefined : "Directory does not exist or is not accessible",
+          },
+          { sessionId: ctx.session.sessionId }
+        )
+      );
+    });
+
+    this.registerHandler("chat.history.req", async (message, ctx) => {
+      const historyMsg = message as ChatHistoryReqMessage;
+      const targetCwd =
+        historyMsg.payload.projectCwd ??
+        (this.config.projectManager ? this.config.projectManager.getCurrentCwd() : "");
+
+      let turns: ChatTurn[] = [];
+      if (this.config.transcriptStore) {
+        turns = await this.config.transcriptStore.getTranscript(
+          targetCwd,
+          historyMsg.payload.limit
+        );
+      }
+
+      await ctx.send(
+        createChatHistoryRespMessage(
+          {
+            currentCwd: targetCwd,
+            turns,
           },
           { sessionId: ctx.session.sessionId }
         )
