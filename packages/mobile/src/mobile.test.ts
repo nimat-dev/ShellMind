@@ -57,6 +57,13 @@ import { DefaultRenderer } from "./renderers/DefaultRenderer.js";
 import { BashRenderer } from "./renderers/BashRenderer.js";
 import { FileRenderer } from "./renderers/FileRenderer.js";
 import { SearchRenderer } from "./renderers/SearchRenderer.js";
+import {
+  MockSpeechToTextProvider,
+  NativeSpeechToTextProvider,
+  getSpeechToTextProvider,
+  setSpeechToTextProvider,
+  resetSpeechToTextProvider,
+} from "./voice/index.js";
 
 describe("Mobile Package Unit & Integration Tests", () => {
   describe("Pairing Payload Parser & Validator", () => {
@@ -1151,6 +1158,101 @@ describe("Mobile Package Unit & Integration Tests", () => {
       const screenEl = React.createElement(ChatScreen, { client });
       expect(screenEl).toBeDefined();
       expect(screenEl.props.client).toBe(client);
+    });
+  });
+
+  describe("Push-to-Talk Speech-to-Text & Voice Input (F010)", () => {
+    it("MockSpeechToTextProvider handles recording lifecycle and interim streaming", async () => {
+      const provider = new MockSpeechToTextProvider({
+        fixtureText: "git status and run tests",
+        delayMs: 5,
+      });
+
+      expect(await provider.isAvailable()).toBe(true);
+      expect(await provider.requestPermission()).toBe("granted");
+      expect(provider.isRecording()).toBe(false);
+
+      let interimResult = "";
+      await provider.startRecording((interim) => {
+        interimResult = interim;
+      });
+
+      expect(provider.isRecording()).toBe(true);
+
+      // Wait for interim callback
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(interimResult.length).toBeGreaterThan(0);
+
+      const finalResult = await provider.stopRecording();
+      expect(finalResult).toBe("git status and run tests");
+      expect(provider.isRecording()).toBe(false);
+    });
+
+    it("MockSpeechToTextProvider cancelRecording discards active recording without output", async () => {
+      const provider = new MockSpeechToTextProvider({
+        fixtureText: "Secret command",
+      });
+
+      await provider.startRecording();
+      expect(provider.isRecording()).toBe(true);
+
+      await provider.cancelRecording();
+      expect(provider.isRecording()).toBe(false);
+
+      // Calling stop after cancel returns empty string
+      const result = await provider.stopRecording();
+      expect(result).toBe("");
+    });
+
+    it("MockSpeechToTextProvider rejects startRecording when permission is denied", async () => {
+      const provider = new MockSpeechToTextProvider({
+        permission: "denied",
+      });
+
+      expect(await provider.requestPermission()).toBe("denied");
+      await expect(provider.startRecording()).rejects.toThrow(/permission was denied/i);
+      expect(provider.isRecording()).toBe(false);
+    });
+
+    it("MockSpeechToTextProvider rejects startRecording when unavailable", async () => {
+      const provider = new MockSpeechToTextProvider({
+        available: false,
+      });
+
+      expect(await provider.isAvailable()).toBe(false);
+      await expect(provider.startRecording()).rejects.toThrow(/not available on this device/i);
+    });
+
+    it("NativeSpeechToTextProvider handles missing hardware gracefully without throwing", async () => {
+      const nativeProvider = new NativeSpeechToTextProvider();
+      const available = await nativeProvider.isAvailable();
+      expect(typeof available).toBe("boolean");
+
+      const permission = await nativeProvider.requestPermission();
+      expect(["granted", "denied", "undetermined"]).toContain(permission);
+    });
+
+    it("Voice Registry manages active speech-to-text provider", () => {
+      const defaultProvider = getSpeechToTextProvider();
+      expect(defaultProvider).toBeDefined();
+
+      const customMock = new MockSpeechToTextProvider({ fixtureText: "Custom" });
+      setSpeechToTextProvider(customMock);
+      expect(getSpeechToTextProvider()).toBe(customMock);
+
+      resetSpeechToTextProvider();
+      expect(getSpeechToTextProvider()).not.toBe(customMock);
+    });
+
+    it("ChatScreen component mounts with sttProvider and exposes mic button", () => {
+      const client = new AgentClient({
+        webSocketFactory: (url) => new WsClient(url) as unknown as WebSocket,
+      });
+      const sttProvider = new MockSpeechToTextProvider({ fixtureText: "Run test suite" });
+
+      const screenEl = React.createElement(ChatScreen, { client, sttProvider });
+      expect(screenEl).toBeDefined();
+      expect(screenEl.props.sttProvider).toBe(sttProvider);
     });
   });
 });

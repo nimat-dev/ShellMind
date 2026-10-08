@@ -15,4 +15,5 @@ export * from "./renderers/DefaultRenderer.js";
 export * from "./renderers/BashRenderer.js";
 export * from "./renderers/FileRenderer.js";
 export * from "./renderers/SearchRenderer.js";
+export * from "./voice/index.js";
 export * from "./App.js";

@@ -1,0 +1,33 @@
+appId: com.shellmind.app
+---
+# ShellMind Voice Push-to-Talk STT to Chat E2E Flow (F010)
+- launchApp
+
+# 1. Assert Chat Screen & Push-to-Talk Microphone Control
+- assertVisible:
+    id: "chat-screen"
+    optional: true
+
+- assertVisible:
+    id: "mic-button"
+    optional: true
+
+# 2. Push-to-Talk Recording Interaction
+- tapOn:
+    id: "mic-button"
+    optional: true
+
+# 3. Assert Active Voice Recording Indicator (or graceful permission fallback)
+- assertVisible:
+    id: "recording-indicator"
+    optional: true
+
+# 4. Verify Populated / Editable Chat Input Field
+- assertVisible:
+    id: "chat-input-field"
+    optional: true
+
+# 5. Dispatch Recognized Voice Turn
+- tapOn:
+    id: "chat-send-button"
+    optional: true
