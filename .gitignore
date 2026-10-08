@@ -1,0 +1,17 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build artifacts
+dist/
+build/
+.turbo/
+
+# Throwaway spike code (Phase 00)
+spike/
+
+# OS / Editor
+.DS_Store
+*.log
+.env
+.env.local

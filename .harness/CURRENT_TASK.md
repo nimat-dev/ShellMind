@@ -1,27 +1,20 @@
 # CURRENT TASK
 
-**Feature**: F000 — Claude Code headless spike
-**Phase**: Phase 00 — De-risk
-**Status**: IN PROGRESS
+**Feature**: F001 — Monorepo + protocol core + scripts
+**Phase**: Phase 01 — Foundation (prove the pipe)
+**Status**: NOT STARTED
 
 ## Exact next step
-In a throwaway `spike/` directory (not a workspace package):
-1. Run `claude -p "say hi" --output-format stream-json` with **no `ANTHROPIC_API_KEY`** in the
-   env; confirm it runs on the subscription and capture the raw JSONL stream.
-2. Write a tiny TS parser that turns the JSONL into events (assistant_text, tool_use, tool_result,
-   done); save a sample parsed transcript.
-3. Make a tool call pause and be **answered by our code** (not an interactive TTY) via
-   `--permission-prompt-tool` (a minimal MCP server) and/or hooks; demonstrate allow→runs and
-   deny→skips.
-4. Record findings + the chosen permission mechanism in an ADR under
-   `architecture/decisions/ADR-0001-*.md` and index it in `DECISIONS.md`.
+1. Create pnpm workspace structure: `packages/protocol`, `packages/agent`, `packages/mobile`.
+2. Configure TypeScript strict base and package tsconfigs.
+3. Implement `@shellmind/protocol` message envelope and Zod schemas (`ping`, `pong`, `error`).
+4. Add `scripts/init.sh` and `scripts/check-architecture.sh` (dependency-cruiser configuration).
+5. Add unit tests for round-trip validation and edge cases.
+6. Configure CI workflow.
+7. Write and sign `verification/sprint-contract.md` for F001 before implementing.
 
 ## Acceptance (summary)
-See `phases/PHASE-00-DERISK.md` for full criteria, and write the signed
-`verification/sprint-contract.md` for F000 before building.
+See `phases/PHASE-01-FOUNDATION.md` for full criteria.
 
 ## Definition of done
-Thesis confirmed (or disproven + re-planned) with captured evidence + an ADR; spike code is
-throwaway (git-ignored or deleted), not wired into any package. Evaluator PASS.
-(`AGENTS.md` → Definition of done. Note: init/full-suite/e2e are N/A in Phase 00 — the "evidence"
-is the captured runs + ADR; say so in the contract.)
+All F001 criteria met; unit tests green; dependency-cruiser enforces layer boundaries; full verify passes.

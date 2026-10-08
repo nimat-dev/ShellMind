@@ -1,0 +1,40 @@
+[
+  {
+    "type": "tool_use",
+    "toolName": "Bash",
+    "toolUseId": "toolu_018RFEtKqttHv5zwznK2bWvW",
+    "input": {
+      "command": "echo 'shellmind-deny-test' > spike/deny_test.txt && echo done",
+      "description": "Write test string to file and print done"
+    }
+  },
+  {
+    "type": "rate_limit",
+    "utilization": 0.31,
+    "resetsAt": 1791441000,
+    "rateLimitType": "five_hour"
+  },
+  {
+    "type": "tool_result",
+    "toolUseId": "toolu_018RFEtKqttHv5zwznK2bWvW",
+    "content": "Operation Bash was denied by ShellMind policy",
+    "isError": true
+  },
+  {
+    "type": "assistant_text",
+    "text": "The command was denied by ShellMind policy — `spike/deny_test.txt` was not written. Nothing changed.",
+    "messageId": "msg_011CfozMNmSKj8x53dETfJR7"
+  },
+  {
+    "type": "rate_limit",
+    "utilization": 0.32,
+    "resetsAt": 1791441000,
+    "rateLimitType": "five_hour"
+  },
+  {
+    "type": "done",
+    "result": "The command was denied by ShellMind policy — `spike/deny_test.txt` was not written. Nothing changed.",
+    "costUsd": 0.22410149999999998,
+    "durationMs": 6167
+  }
+]

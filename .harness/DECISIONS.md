@@ -42,3 +42,8 @@ the differentiator is the AI + permission model, not voice or breadth.
 DEC-008 (2026-10-07): Phase 00 is a **throwaway spike (F000)** run before any product code,
 because the entire thesis depends on DEC-002 holding. — Cheap to verify; expensive to discover
 late. If disproven, re-plan Phase 03 (e.g. fall back to API-key mode).
+
+DEC-009 (2026-10-07): Programmatic permission interception uses an internal MCP server via
+`--permission-prompt-tool mcp__<server>__<tool>` and requires `--verbose` with `--output-format stream-json`.
+Decisions are delivered as JSON strings `{ behavior: "allow" }` or `{ behavior: "deny", message: "..." }`.
+— Proven in F000 spike; avoids brittle TTY parsing or SDK stdin handshake. [ADR-0001]

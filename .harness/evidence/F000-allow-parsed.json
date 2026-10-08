@@ -1,0 +1,40 @@
+[
+  {
+    "type": "tool_use",
+    "toolName": "Bash",
+    "toolUseId": "toolu_01Lkjn2YUKLPtGkYkVti9rEZ",
+    "input": {
+      "command": "echo 'shellmind-allow-test' > spike/allow_test.txt && echo done",
+      "description": "Write test file and print done"
+    }
+  },
+  {
+    "type": "rate_limit",
+    "utilization": 0.29,
+    "resetsAt": 1791441000,
+    "rateLimitType": "five_hour"
+  },
+  {
+    "type": "tool_result",
+    "toolUseId": "toolu_01Lkjn2YUKLPtGkYkVti9rEZ",
+    "content": "done",
+    "isError": false
+  },
+  {
+    "type": "assistant_text",
+    "text": "done",
+    "messageId": "msg_011CfozKgbgqxjE3uNLLXtud"
+  },
+  {
+    "type": "rate_limit",
+    "utilization": 0.31,
+    "resetsAt": 1791441000,
+    "rateLimitType": "five_hour"
+  },
+  {
+    "type": "done",
+    "result": "done",
+    "costUsd": 0.33286,
+    "durationMs": 7240
+  }
+]
