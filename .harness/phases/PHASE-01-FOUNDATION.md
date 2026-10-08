@@ -23,22 +23,22 @@ Online, with a round-trip. No terminal/AI yet. Build the plumbing before the pol
 - [x] Verification: full verify (typecheck + lint + test + check-architecture) green, no regressions.
 
 ## F002 — Agent daemon + tailnet transport + device-token auth
-**Status**: NOT STARTED
+**Status**: COMPLETE
 
 ### Acceptance criteria
-- [ ] `shellmind` daemon binds a transport server on the **tailnet interface only** (not
+- [x] `shellmind` daemon binds a transport server on the **tailnet interface only** (not
       `0.0.0.0`); refuses to start if no tailnet iface is found (clear error).
-- [ ] `Transport` interface in agent core with a `tailnet` adapter registered (per `MODULES.md`);
+- [x] `Transport` interface in agent core with a `tailnet` adapter registered (per `MODULES.md`);
       core never imports the concrete adapter.
-- [ ] Device-token handshake: a connection with a valid paired token → `hello.ack` + `pong` on
+- [x] Device-token handshake: a connection with a valid paired token → `hello.ack` + `pong` on
       `ping`; **missing/invalid/revoked token → `hello.reject`, connection closed**, logged.
-- [ ] A local device registry persists paired devices (hashed token, 0600 file); `shellmind
+- [x] A local device registry persists paired devices (hashed token, 0600 file); `shellmind
       devices` lists + revokes.
-- [ ] Edge/error cases: no token, wrong token, revoked device, malformed handshake, duplicate
+- [x] Edge/error cases: no token, wrong token, revoked device, malformed handshake, duplicate
       pairing, token literal never logged — each covered by an integration test.
-- [ ] E2E: N/A at mobile level (covered by F003); agent-side integration test drives a real socket.
-- [ ] Boundary invariants: `check-architecture` passes (I/O only in `adapters/**`).
-- [ ] Verification: full verify green, no regressions.
+- [x] E2E: N/A at mobile level (covered by F003); agent-side integration test drives a real socket.
+- [x] Boundary invariants: `check-architecture` passes (I/O only in `adapters/**`).
+- [x] Verification: full verify green, no regressions.
 
 ## F003 — Mobile skeleton + QR pairing + connect + status
 **Status**: NOT STARTED

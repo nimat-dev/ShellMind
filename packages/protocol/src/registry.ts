@@ -2,6 +2,14 @@ import { z } from "zod";
 import { PING_MESSAGE_TYPE, PingMessageSchema } from "./messages/ping.js";
 import { PONG_MESSAGE_TYPE, PongMessageSchema } from "./messages/pong.js";
 import { ERROR_MESSAGE_TYPE, ErrorMessageSchema } from "./messages/error.js";
+import {
+  HELLO_MESSAGE_TYPE,
+  HelloMessageSchema,
+  HELLO_ACK_MESSAGE_TYPE,
+  HelloAckMessageSchema,
+  HELLO_REJECT_MESSAGE_TYPE,
+  HelloRejectMessageSchema,
+} from "./messages/hello.js";
 
 export type AnyMessageSchema = z.ZodTypeAny;
 
@@ -13,6 +21,9 @@ export class MessageRegistry {
     this.register(PING_MESSAGE_TYPE, PingMessageSchema);
     this.register(PONG_MESSAGE_TYPE, PongMessageSchema);
     this.register(ERROR_MESSAGE_TYPE, ErrorMessageSchema);
+    this.register(HELLO_MESSAGE_TYPE, HelloMessageSchema);
+    this.register(HELLO_ACK_MESSAGE_TYPE, HelloAckMessageSchema);
+    this.register(HELLO_REJECT_MESSAGE_TYPE, HelloRejectMessageSchema);
   }
 
   public static getInstance(): MessageRegistry {
