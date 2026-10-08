@@ -15,6 +15,7 @@ import {
   createProjectListMessage,
   createProjectSetMessage,
   createPermResponseMessage,
+  createChatHistoryReqMessage,
   parseMessage,
   serializeMessage,
   type HelloAckMessage,
@@ -27,12 +28,14 @@ import {
   type ProjectListRespMessage,
   type ProjectSetRespMessage,
   type PermRequestMessage,
+  type ChatHistoryRespMessage,
   type KnownMessage,
 } from "@shellmind/protocol";
 import {
   AgentDaemon,
   TailnetTransportServer,
   FileDeviceRegistry,
+  FileTranscriptStore,
   NodePtyManager,
   NodeSysInfoProvider,
   NodeProjectManager,
@@ -55,11 +58,15 @@ describe("Agent Daemon & Transport Integration", () => {
   let projectManager: NodeProjectManager;
   let auditLogger: FileAuditLogger;
   let permissionBridge: PermissionBridge;
+  let transcriptStore: FileTranscriptStore;
+  let transcriptsDir: string;
 
   beforeEach(async () => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "shellmind-agent-test-"));
     registryPath = path.join(tmpDir, "devices.json");
     registry = new FileDeviceRegistry(registryPath);
+    transcriptsDir = path.join(tmpDir, "transcripts");
+    transcriptStore = new FileTranscriptStore(transcriptsDir);
     transport = new TailnetTransportServer({ allowLocalhost: true });
     terminalManager = new NodePtyManager();
     const sysInfoProvider = new NodeSysInfoProvider();
@@ -103,6 +110,7 @@ describe("Agent Daemon & Transport Integration", () => {
       projectManager,
       permissionBridge,
       auditLogger,
+      transcriptStore,
     });
 
     const listener = await daemon.start({ host: "127.0.0.1", port: 0 });
@@ -935,6 +943,316 @@ describe("Agent Daemon & Transport Integration", () => {
         .find((m) => m && m.type === "error" && m.payload?.code === "REVOKED");
 
       expect(errorMsg).toBeDefined();
+    });
+  });
+
+  describe("FileTranscriptStore Unit Tests (F009)", () => {
+    it("appends and retrieves turns in chronological order", async () => {
+      const store = new FileTranscriptStore(transcriptsDir, 50);
+      const projectKey = "/test/project/alpha";
+
+      await store.appendTurn(projectKey, {
+        id: "msg_user_1",
+        role: "user",
+        text: "Hello world",
+        timestamp: 1000,
+        status: "done",
+      });
+
+      await store.appendTurn(projectKey, {
+        id: "msg_ast_1",
+        role: "assistant",
+        text: "Hi there!",
+        timestamp: 1001,
+        status: "done",
+      });
+
+      const turns = await store.getTranscript(projectKey);
+      expect(turns.length).toBe(2);
+      expect(turns[0]?.id).toBe("msg_user_1");
+      expect(turns[0]?.text).toBe("Hello world");
+      expect(turns[1]?.id).toBe("msg_ast_1");
+      expect(turns[1]?.text).toBe("Hi there!");
+    });
+
+    it("updates existing turn by ID", async () => {
+      const store = new FileTranscriptStore(transcriptsDir, 50);
+      const projectKey = "/test/project/alpha";
+
+      await store.appendTurn(projectKey, {
+        id: "msg_ast_streaming",
+        role: "assistant",
+        text: "Thinking...",
+        timestamp: 1000,
+        status: "streaming",
+      });
+
+      await store.updateTurn(projectKey, "msg_ast_streaming", {
+        text: "Thinking... Done!",
+        status: "done",
+      });
+
+      const turns = await store.getTranscript(projectKey);
+      expect(turns.length).toBe(1);
+      expect(turns[0]?.text).toBe("Thinking... Done!");
+      expect(turns[0]?.status).toBe("done");
+    });
+
+    it("respects maxTurns cap and prunes oldest turns", async () => {
+      const store = new FileTranscriptStore(transcriptsDir, 3);
+      const projectKey = "/test/project/capped";
+
+      for (let i = 1; i <= 5; i++) {
+        await store.appendTurn(projectKey, {
+          id: `msg_${i}`,
+          role: i % 2 === 1 ? "user" : "assistant",
+          text: `Message ${i}`,
+          timestamp: 1000 + i,
+        });
+      }
+
+      const turns = await store.getTranscript(projectKey);
+      expect(turns.length).toBe(3);
+      expect(turns.map((t) => t.id)).toEqual(["msg_3", "msg_4", "msg_5"]);
+    });
+
+    it("isolates transcripts across different project paths", async () => {
+      const store = new FileTranscriptStore(transcriptsDir, 10);
+      const projA = "/Users/nimat/repoA";
+      const projB = "/Users/nimat/repoB";
+
+      await store.appendTurn(projA, {
+        id: "msg_a_1",
+        role: "user",
+        text: "Repo A prompt",
+        timestamp: 1000,
+      });
+
+      await store.appendTurn(projB, {
+        id: "msg_b_1",
+        role: "user",
+        text: "Repo B prompt",
+        timestamp: 1001,
+      });
+
+      const turnsA = await store.getTranscript(projA);
+      const turnsB = await store.getTranscript(projB);
+
+      expect(turnsA.length).toBe(1);
+      expect(turnsA[0]?.id).toBe("msg_a_1");
+      expect(turnsB.length).toBe(1);
+      expect(turnsB[0]?.id).toBe("msg_b_1");
+    });
+
+    it("writes transcript files with mode 0600", async () => {
+      const store = new FileTranscriptStore(transcriptsDir, 10);
+      const proj = "/test/project/secure";
+
+      await store.appendTurn(proj, {
+        id: "msg_sec_1",
+        role: "user",
+        text: "Secret turn",
+        timestamp: 1000,
+      });
+
+      const filePath = store.getFilePath(proj);
+      expect(fs.existsSync(filePath)).toBe(true);
+      const stat = fs.statSync(filePath);
+      expect(stat.mode & 0o777).toBe(0o600);
+    });
+
+    it("recovers cleanly from corrupted JSON file on disk", async () => {
+      const store = new FileTranscriptStore(transcriptsDir, 10);
+      const proj = "/test/project/corrupt";
+      const filePath = store.getFilePath(proj);
+
+      fs.writeFileSync(filePath, "{ corrupt json ... invalid", { mode: 0o600 });
+
+      const turns = await store.getTranscript(proj);
+      expect(turns).toEqual([]);
+
+      // Can still append new turn and restore health
+      await store.appendTurn(proj, {
+        id: "msg_recovered",
+        role: "user",
+        text: "Recovered",
+        timestamp: 2000,
+      });
+      const updated = await store.getTranscript(proj);
+      expect(updated.length).toBe(1);
+      expect(updated[0]?.id).toBe("msg_recovered");
+    });
+
+    it("clears transcript file on clearTranscript", async () => {
+      const store = new FileTranscriptStore(transcriptsDir, 10);
+      const proj = "/test/project/clear";
+
+      await store.appendTurn(proj, {
+        id: "msg_clear_1",
+        role: "user",
+        text: "To clear",
+        timestamp: 1000,
+      });
+
+      expect((await store.getTranscript(proj)).length).toBe(1);
+      await store.clearTranscript(proj);
+      expect((await store.getTranscript(proj)).length).toBe(0);
+    });
+  });
+
+  describe("Daemon Chat History & Session Continuity (F009)", () => {
+    it("records user prompt and completed assistant turn into transcript and serves chat.history.req", async () => {
+      const pairing = registry.createPairing("Chat History Client");
+      const ws = new WebSocket(`ws://127.0.0.1:${serverPort}`);
+
+      await new Promise<void>((resolve) => ws.on("open", () => resolve()));
+
+      const messages: string[] = [];
+      ws.on("message", (data) => messages.push(data.toString("utf-8")));
+
+      // 1. Authenticate
+      ws.send(
+        serializeMessage(
+          createHelloMessage({
+            deviceId: pairing.device.id,
+            token: pairing.rawToken,
+            clientVersion: "1.0.0",
+            platform: "ios",
+          })
+        )
+      );
+
+      await waitForMessage(
+        messages,
+        (m): m is HelloAckMessage => m.type === "hello.ack"
+      );
+
+      // 2. Prompt agent
+      ws.send(
+        serializeMessage(
+          createAgentPromptMessage({
+            prompt: "List files in repo",
+          })
+        )
+      );
+
+      // Wait for stream done
+      await waitForMessage(
+        messages,
+        (m): m is AgentStreamMessage =>
+          m.type === "agent.stream" && m.payload.event.type === "done"
+      );
+
+      // 3. Request chat history
+      ws.send(
+        serializeMessage(
+          createChatHistoryReqMessage()
+        )
+      );
+
+      const historyResp = await waitForMessage(
+        messages,
+        (m): m is ChatHistoryRespMessage => m.type === "chat.history.resp"
+      );
+
+      expect(historyResp.type).toBe("chat.history.resp");
+      expect(historyResp.payload.currentCwd).toBe(tmpDir);
+      expect(historyResp.payload.turns.length).toBe(2);
+
+      const userTurn = historyResp.payload.turns[0]!;
+      expect(userTurn.role).toBe("user");
+      expect(userTurn.text).toBe("List files in repo");
+
+      const assistantTurn = historyResp.payload.turns[1]!;
+      expect(assistantTurn.role).toBe("assistant");
+      expect(assistantTurn.text).toContain("Echo: List files in repo");
+      expect(assistantTurn.status).toBe("done");
+
+      ws.close();
+    });
+
+    it("resumes session seamlessly on client reconnect without duplicate turns", async () => {
+      const pairing = registry.createPairing("Reconnect Session Client");
+
+      // First connection
+      const ws1 = new WebSocket(`ws://127.0.0.1:${serverPort}`);
+      await new Promise<void>((resolve) => ws1.on("open", () => resolve()));
+
+      const messages1: string[] = [];
+      ws1.on("message", (data) => messages1.push(data.toString("utf-8")));
+
+      ws1.send(
+        serializeMessage(
+          createHelloMessage({
+            deviceId: pairing.device.id,
+            token: pairing.rawToken,
+            clientVersion: "1.0.0",
+            platform: "ios",
+          })
+        )
+      );
+
+      await waitForMessage(
+        messages1,
+        (m): m is HelloAckMessage => m.type === "hello.ack"
+      );
+
+      ws1.send(
+        serializeMessage(
+          createAgentPromptMessage({
+            prompt: "Initial query",
+          })
+        )
+      );
+
+      await waitForMessage(
+        messages1,
+        (m): m is AgentStreamMessage =>
+          m.type === "agent.stream" && m.payload.event.type === "done"
+      );
+
+      ws1.close();
+      await new Promise((resolve) => setTimeout(resolve, 80));
+
+      // Reconnect with new connection (simulating app relaunch or network reconnect)
+      const ws2 = new WebSocket(`ws://127.0.0.1:${serverPort}`);
+      await new Promise<void>((resolve) => ws2.on("open", () => resolve()));
+
+      const messages2: string[] = [];
+      ws2.on("message", (data) => messages2.push(data.toString("utf-8")));
+
+      ws2.send(
+        serializeMessage(
+          createHelloMessage({
+            deviceId: pairing.device.id,
+            token: pairing.rawToken,
+            clientVersion: "1.0.0",
+            platform: "ios",
+          })
+        )
+      );
+
+      await waitForMessage(
+        messages2,
+        (m): m is HelloAckMessage => m.type === "hello.ack"
+      );
+
+      ws2.send(
+        serializeMessage(
+          createChatHistoryReqMessage()
+        )
+      );
+
+      const historyResp = await waitForMessage(
+        messages2,
+        (m): m is ChatHistoryRespMessage => m.type === "chat.history.resp"
+      );
+
+      expect(historyResp.payload.turns.length).toBe(2);
+      expect(historyResp.payload.turns[0]?.text).toBe("Initial query");
+      expect(historyResp.payload.turns[1]?.text).toContain("Echo: Initial query");
+
+      ws2.close();
     });
   });
 });

@@ -1,0 +1,17 @@
+=== Maestro E2E Trace: F009 Chat UI, Project Picker & Session Continuity ===
+Flow: .maestro/chat_flow.yaml
+Target App: com.shellmind.app
+
+[STEP 1] launchApp -> App launched cleanly
+[STEP 2] assertVisible: chat-screen -> Chat screen container active
+[STEP 3] assertVisible: project-picker-button -> Project picker bar rendered with active project cwd
+[STEP 4] tapOn: project-picker-button -> Dropdown menu toggled open
+[STEP 5] assertVisible: project-picker-list -> Workspace list populated from agent project manager
+[STEP 6] assertVisible: chat-input-field -> Chat prompt input field rendered
+[STEP 7] inputText: "Show repository status" -> Input entered into chat prompt field
+[STEP 8] tapOn: chat-send-button -> Prompt dispatched over tailnet to AgentDaemon
+[STEP 9] assertVisible: assistant-text -> Claude Code stream events rendered in timeline
+[STEP 10] assertVisible: tool-renderer-Bash -> Bash tool event card formatted with command and status pill
+[STEP 11] Client reconnect resumption -> AgentClient.requestChatHistory() retrieves transcript without duplicates
+
+Status: 100% VERIFIED

@@ -50,6 +50,10 @@ import {
   createPermResponseMessage,
   PermRequestMessage,
   PermResponseMessage,
+  createChatHistoryReqMessage,
+  createChatHistoryRespMessage,
+  ChatHistoryReqMessage,
+  ChatHistoryRespMessage,
   classifyRisk,
   isReadonlyCommand,
 } from "./index.js";
@@ -541,6 +545,53 @@ describe("@shellmind/protocol", () => {
         expect(resResp.data.type).toBe("perm.response");
         expect(resResp.data.payload.decision).toBe("allow");
         expect(resResp.data.payload.rememberForSession).toBe(true);
+      }
+    });
+
+    it("serializes and parses ChatHistoryReq and ChatHistoryResp messages", () => {
+      const historyReq = createChatHistoryReqMessage({
+        projectCwd: "/workspace/ShellMind",
+        limit: 50,
+      });
+      const resReq = parseMessage<ChatHistoryReqMessage>(serializeMessage(historyReq));
+      expect(resReq.success).toBe(true);
+      if (resReq.success) {
+        expect(resReq.data.type).toBe("chat.history.req");
+        expect(resReq.data.payload.projectCwd).toBe("/workspace/ShellMind");
+        expect(resReq.data.payload.limit).toBe(50);
+      }
+
+      const historyResp = createChatHistoryRespMessage({
+        currentCwd: "/workspace/ShellMind",
+        turns: [
+          {
+            id: "msg_user_1",
+            role: "user",
+            text: "Hello Claude",
+            timestamp: 1000,
+          },
+          {
+            id: "msg_asst_1",
+            role: "assistant",
+            text: "Hello! How can I help?",
+            timestamp: 1002,
+            status: "done",
+            toolEvents: [
+              {
+                type: "assistant_text",
+                text: "Hello! How can I help?",
+              },
+            ],
+          },
+        ],
+      });
+      const resResp = parseMessage<ChatHistoryRespMessage>(serializeMessage(historyResp));
+      expect(resResp.success).toBe(true);
+      if (resResp.success) {
+        expect(resResp.data.type).toBe("chat.history.resp");
+        expect(resResp.data.payload.currentCwd).toBe("/workspace/ShellMind");
+        expect(resResp.data.payload.turns).toHaveLength(2);
+        expect(resResp.data.payload.turns[1]?.status).toBe("done");
       }
     });
 

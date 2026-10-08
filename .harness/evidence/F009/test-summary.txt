@@ -1,0 +1,17 @@
+
+ RUN  v3.2.7 /Users/nimatullahrazmjo/workstation/ShellMind
+
+ ✓ packages/mobile/src/terminal/buffer.test.ts (8 tests) 3ms
+ ✓ packages/protocol/src/protocol.test.ts (29 tests) 10ms
+ ✓ packages/agent/src/claude-driver.test.ts (23 tests) 103ms
+ ✓ packages/mobile/src/mobile.test.ts (24 tests) 2041ms
+   ✓ Mobile Package Unit & Integration Tests > Terminal Client Streaming & Interaction (F005) > handles term.open, streams term.data to buffer, sends input, resize, and receives exit  382ms
+ ✓ packages/agent/src/agent.test.ts (29 tests) 2510ms
+   ✓ Agent Daemon & Transport Integration > PTY Terminal Streaming & Process Lifecycle > spawns PTY on term.open, streams stdout via term.data, handles stdin and exit  608ms
+   ✓ Agent Daemon & Transport Integration > PTY Terminal Streaming & Process Lifecycle > terminates child PTY process when connection drops (no orphan processes)  316ms
+
+ Test Files  5 passed (5)
+      Tests  113 passed (113)
+   Start at  01:00:39
+   Duration  3.15s (transform 708ms, setup 0ms, collect 1.41s, tests 4.67s, environment 1ms, prepare 358ms)
+

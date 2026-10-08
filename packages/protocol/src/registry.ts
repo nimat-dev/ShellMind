@@ -52,6 +52,12 @@ import {
   PERM_RESPONSE_MESSAGE_TYPE,
   PermResponseMessageSchema,
 } from "./messages/permission.js";
+import {
+  CHAT_HISTORY_REQ_MESSAGE_TYPE,
+  ChatHistoryReqMessageSchema,
+  CHAT_HISTORY_RESP_MESSAGE_TYPE,
+  ChatHistoryRespMessageSchema,
+} from "./messages/chat.js";
 
 export type AnyMessageSchema = z.ZodTypeAny;
 
@@ -82,6 +88,8 @@ export class MessageRegistry {
     this.register(PROJECT_SET_RESP_MESSAGE_TYPE, ProjectSetRespMessageSchema);
     this.register(PERM_REQUEST_MESSAGE_TYPE, PermRequestMessageSchema);
     this.register(PERM_RESPONSE_MESSAGE_TYPE, PermResponseMessageSchema);
+    this.register(CHAT_HISTORY_REQ_MESSAGE_TYPE, ChatHistoryReqMessageSchema);
+    this.register(CHAT_HISTORY_RESP_MESSAGE_TYPE, ChatHistoryRespMessageSchema);
   }
 
   public static getInstance(): MessageRegistry {

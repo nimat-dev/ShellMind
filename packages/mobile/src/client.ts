@@ -9,6 +9,7 @@ import {
   createAgentAbortMessage,
   createProjectListMessage,
   createProjectSetMessage,
+  createChatHistoryReqMessage,
   parseMessage,
   serializeMessage,
   type HelloAckMessage,
@@ -28,6 +29,8 @@ import {
   type PermRequestPayload,
   type PermRequestMessage,
   type PermissionDecision,
+  type ChatHistoryRespPayload,
+  type ChatHistoryRespMessage,
 } from "@shellmind/protocol";
 import type { PairingConfig } from "./pairing.js";
 
@@ -67,6 +70,7 @@ export class AgentClient {
   private projectListListeners: Set<(resp: ProjectListRespPayload) => void> = new Set();
   private projectSetListeners: Set<(resp: ProjectSetRespPayload) => void> = new Set();
   private permissionRequestListeners: Set<(req: PermRequestPayload) => void> = new Set();
+  private chatHistoryListeners: Set<(resp: ChatHistoryRespPayload) => void> = new Set();
 
   private state: ClientState = {
     status: "disconnected",
@@ -244,6 +248,30 @@ export class AgentClient {
     if (!this.socket || this.state.status !== "online") return false;
     const msg = createPermResponseMessage(
       { requestId, decision, rememberForSession },
+      { sessionId: this.state.sessionId ?? undefined }
+    );
+    try {
+      this.socket.send(serializeMessage(msg));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  public onChatHistory(listener: (resp: ChatHistoryRespPayload) => void): () => void {
+    this.chatHistoryListeners.add(listener);
+    return () => {
+      this.chatHistoryListeners.delete(listener);
+    };
+  }
+
+  public requestChatHistory(projectCwd?: string, limit?: number): boolean {
+    if (!this.socket || this.state.status !== "online") return false;
+    const payload: { projectCwd?: string; limit?: number } = {};
+    if (projectCwd) payload.projectCwd = projectCwd;
+    if (limit) payload.limit = limit;
+    const msg = createChatHistoryReqMessage(
+      payload,
       { sessionId: this.state.sessionId ?? undefined }
     );
     try {
@@ -463,6 +491,14 @@ export class AgentClient {
       const permReq = message as PermRequestMessage;
       for (const listener of this.permissionRequestListeners) {
         listener(permReq.payload);
+      }
+      return;
+    }
+
+    if (message.type === "chat.history.resp") {
+      const historyResp = message as ChatHistoryRespMessage;
+      for (const listener of this.chatHistoryListeners) {
+        listener(historyResp.payload);
       }
       return;
     }
