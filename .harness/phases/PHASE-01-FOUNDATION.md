@@ -5,22 +5,22 @@ connection. The user-visible proof: a phone pairs with the agent over the tailne
 Online, with a round-trip. No terminal/AI yet. Build the plumbing before the polish.
 
 ## F001 — Monorepo + protocol core + scripts
-**Status**: NOT STARTED
+**Status**: COMPLETE
 
 ### Acceptance criteria
-- [ ] pnpm workspace with `packages/protocol`, `packages/agent`, `packages/mobile`; TS strict mode
+- [x] pnpm workspace with `packages/protocol`, `packages/agent`, `packages/mobile`; TS strict mode
       across all; shared base tsconfig.
-- [ ] `@shellmind/protocol` exports the message envelope + zod schemas for `ping`/`pong` and the
+- [x] `@shellmind/protocol` exports the message envelope + zod schemas for `ping`/`pong` and the
       `error` message; a pure round-trip (parse→validate→serialize) unit test passes.
-- [ ] `scripts/init.sh` and `scripts/check-architecture.sh` exist and run; `check-architecture`
+- [x] `scripts/init.sh` and `scripts/check-architecture.sh` exist and run; `check-architecture`
       runs dependency-cruiser against the rules in `rules/layer-boundaries.md` and **passes** on
       the skeleton (and would fail on a seeded violation — prove with one throwaway test case).
-- [ ] CI workflow runs typecheck + lint + test + check-architecture on push.
-- [ ] Edge/error cases from `verification/edge-cases.md` (applicable): malformed/oversized message
+- [x] CI workflow runs typecheck + lint + test + check-architecture on push.
+- [x] Edge/error cases from `verification/edge-cases.md` (applicable): malformed/oversized message
       rejected by zod with a typed error; unknown message type handled.
-- [ ] E2E: N/A — no user-facing flow yet (library/scaffold); recorded as N/A in the contract.
-- [ ] Boundary invariants: `check-architecture` passes; `protocol` imports nothing with I/O.
-- [ ] Verification: full verify (typecheck + lint + test + check-architecture) green, no regressions.
+- [x] E2E: N/A — no user-facing flow yet (library/scaffold); recorded as N/A in the contract.
+- [x] Boundary invariants: `check-architecture` passes; `protocol` imports nothing with I/O.
+- [x] Verification: full verify (typecheck + lint + test + check-architecture) green, no regressions.
 
 ## F002 — Agent daemon + tailnet transport + device-token auth
 **Status**: NOT STARTED

@@ -1,20 +1,20 @@
 # CURRENT TASK
 
-**Feature**: F001 — Monorepo + protocol core + scripts
+**Feature**: F002 — Agent daemon + tailnet transport + device-token auth
 **Phase**: Phase 01 — Foundation (prove the pipe)
-**Status**: NOT STARTED
+**Status**: IN PROGRESS
 
 ## Exact next step
-1. Create pnpm workspace structure: `packages/protocol`, `packages/agent`, `packages/mobile`.
-2. Configure TypeScript strict base and package tsconfigs.
-3. Implement `@shellmind/protocol` message envelope and Zod schemas (`ping`, `pong`, `error`).
-4. Add `scripts/init.sh` and `scripts/check-architecture.sh` (dependency-cruiser configuration).
-5. Add unit tests for round-trip validation and edge cases.
-6. Configure CI workflow.
-7. Write and sign `verification/sprint-contract.md` for F001 before implementing.
+1. In `packages/agent`:
+   - Implement `Transport` interface in `src/core/transport.ts` (per `MODULES.md`).
+   - Implement Tailscale interface detector & binder in `src/adapters/transport/tailnet.ts`.
+   - Implement device-token auth handshake (`hello` -> `hello.ack` / `hello.reject`) and device registry (`src/adapters/storage/device-registry.ts` with hashed tokens and 0600 file permissions).
+   - Wire `shellmind` CLI daemon commands (`pair`, `devices`, `dev`).
+2. Integration tests driving a real tailnet/localhost socket handshake: valid token -> `hello.ack` + `pong`; invalid/missing/revoked token -> `hello.reject` + connection closed.
+3. Obey layer boundaries: `check-architecture` passes (`src/core` contains no I/O; adapters hold side-effects).
 
 ## Acceptance (summary)
 See `phases/PHASE-01-FOUNDATION.md` for full criteria.
 
 ## Definition of done
-All F001 criteria met; unit tests green; dependency-cruiser enforces layer boundaries; full verify passes.
+Agent daemon binds tailnet interface only, rejects missing/invalid/revoked device tokens with clean rejection, persists paired hashed tokens, full test suite and `check-architecture` green, PR reviewed clean.

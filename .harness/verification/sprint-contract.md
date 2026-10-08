@@ -1,43 +1,52 @@
-# Sprint Contract — F000: Claude Code headless spike
+# Sprint Contract — F001: Monorepo + protocol core + scripts
 
-Feature: F000 — Claude Code headless spike
-Phase: Phase 00 — De-risk
+Feature: F001 — Monorepo + protocol core + scripts
+Phase: Phase 01 — Foundation (prove the pipe)
 Date: 2026-10-07
 
 ## 1. Scope & Acceptance Criteria
-- [x] `claude -p "<prompt>" --output-format stream-json --verbose` runs under the logged-in subscription (no `ANTHROPIC_API_KEY` set) and emits a parseable JSONL stream — captured verbatim in `.harness/evidence/F000-subscription-say-hi-raw.jsonl`.
-- [x] Stream parsed in Node (TypeScript) into discrete events (assistant_text, tool_use, tool_result, rate_limit, done) — implemented in `spike/stream_parser.ts`, verified via `spike/test_parser.ts`, parsed transcripts saved in `.harness/evidence/F000-allow-parsed.json` and `F000-deny-parsed.json`.
-- [x] Permission prompt intercepted and answered programmatically: using an internal MCP server with `--permission-prompt-tool mcp__perm_server__permission_prompt`, demonstrating allow→runs and deny→skips with zero interactive TTY prompts. Captured in `.harness/evidence/F000-allow-run-raw.jsonl` and `F000-deny-run-raw.jsonl`.
-- [x] Boundary invariants: spike code kept isolated in `spike/` and git-ignored; no workspace packages modified.
-- [x] Edge/error cases from §2 covered: denial handling, missing verbose flag handling, namespaced tool identifier matching.
-- [x] E2E: N/A — throwaway spike, de-risking foundation before Phase 01.
-- [x] No regressions: N/A — no prior features.
-- [x] Findings documented in ADR-0001 and indexed in `DECISIONS.md`.
+- [x] pnpm workspace with `packages/protocol`, `packages/agent`, `packages/mobile`; TS strict mode across all; shared base tsconfig.
+- [x] `@shellmind/protocol` exports the message envelope + zod schemas for `ping`/`pong` and the `error` message; a pure round-trip (parse→validate→serialize) unit test passes.
+- [x] `scripts/init.sh` and `scripts/check-architecture.sh` exist and run; `check-architecture` runs dependency-cruiser against the rules in `rules/layer-boundaries.md` and passes on the skeleton (and would fail on a seeded violation — proven with throwaway test case).
+- [x] CI workflow (`.github/workflows/ci.yml`) runs typecheck + lint + test + check-architecture on push.
+- [x] Edge/error cases from §2 covered by tests: malformed JSON, oversized message, unknown message type, missing required envelope fields.
+- [x] E2E: N/A — no user-facing flow yet (pure protocol library + tooling scaffold).
+- [x] Boundary invariants: `check-architecture` passes; `packages/protocol` imports nothing with I/O (pure core).
+- [x] No regressions: full verify (typecheck + lint + test + check-architecture) passes with zero errors.
 
 ## 2. Edge cases & failure paths (from `verification/edge-cases.md`)
-- Unauthenticated / missing API key: verified that Claude uses the user's subscription token when `ANTHROPIC_API_KEY` is not present.
-- Missing `--verbose` flag: identified that Claude CLI 2.1.293 exits with code 1 if `--output-format=stream-json` is passed without `--verbose`.
-- Namespaced MCP tool names: identified that Claude CLI prefixes MCP tools with `mcp__<server_name>__<tool_name>` and the CLI flag requires the full namespaced name.
-- Deny permission path: verified that returning `{"behavior": "deny", "message": "..."}` aborts tool execution and reports error to model without writing files.
-- Rate limit event parsing: verified that periodic `rate_limit_event` payloads are captured and parsed with window utilization and reset timestamps.
+- Malformed JSON string passed to parser -> returns typed parse failure error (`ERR_MALFORMED_JSON`).
+- Missing required envelope fields (e.g. missing `id`, `type`, or `payload`) -> Zod validation error (`ERR_INVALID_ENVELOPE` / `ERR_SCHEMA_VALIDATION`).
+- Oversized message exceeding MAX_MESSAGE_SIZE -> rejected with size limit error before expensive processing (`ERR_PAYLOAD_TOO_LARGE`).
+- Unknown message type -> validated against known message schemas; rejected with unrecognized message type error (`ERR_UNKNOWN_MESSAGE_TYPE`).
+- Protocol package isolation -> dependency-cruiser fails if any Node builtin or external I/O package is imported in `protocol` (proven with seeded violation).
 
 ## 3. E2E scenario(s)
-N/A — Phase 00 de-risking spike. Monorepo and user-facing clients start in Phase 01.
+N/A — Not user-facing (foundation scaffold & core protocol library). E2E testing starts in F003 with mobile client connection.
 
 ## 4. Plan (thinnest vertical slice)
-1. Verify `claude -p` headless execution without `ANTHROPIC_API_KEY`.
-2. Determine required flags (`--verbose`, `--output-format stream-json`).
-3. Construct minimal MCP permission server implementing `tools/call`.
-4. Test allow path (command executes, file written).
-5. Test deny path (command denied, file omitted).
-6. Implement TS JSONL stream parser and verify output.
-7. Record ADR-0001 and update DECISIONS.md.
+1. Initialize pnpm monorepo root: `package.json`, `pnpm-workspace.yaml`, `tsconfig.base.json`.
+2. Configure `packages/protocol` with Zod dependencies, schemas (`Envelope`, `PingMessage`, `PongMessage`, `ErrorMessage`), serializer, and parser.
+3. Configure `packages/agent` and `packages/mobile` package skeletons.
+4. Add Vitest and unit test suite in `packages/protocol`.
+5. Set up ESLint and dependency-cruiser configuration (`.dependency-cruiser.cjs`).
+6. Create `scripts/init.sh` and `scripts/check-architecture.sh`.
+7. Verify seeded architectural violation test.
+8. Add GitHub Actions CI workflow.
+9. Execute full verify: typecheck, lint, test, check-architecture.
 
 ## 5. Out of scope (parked, not built)
-- Monorepo structure, protocol envelope, agent daemon, mobile app (reserved for Phase 01+).
+- Transport socket servers or clients (F002).
+- Terminal PTY handling (F004).
+- Claude Code subprocess driver (F007).
 
 ## 6. New dependencies (with justification)
-None. Built with Node 25 built-in TypeScript support and child_process.
+- `zod`: Schema declaration and validation for pure core protocol (`packages/protocol`).
+- `vitest`: Fast TypeScript unit test runner for the monorepo.
+- `typescript`: Strict type checking across workspace packages.
+- `dependency-cruiser`: Mechanically enforces layer boundaries in `rules/layer-boundaries.md`.
+- `eslint` + `typescript-eslint`: Code linting.
 
 ## 7. Risks
-- Future Claude Code CLI releases changing MCP namespacing or flag requirements: mitigated by locking version expectation and encapsulating driver options in agent package in F007.
+- Workspace dependency linking issues: ensure `pnpm-workspace.yaml` correctly resolves `"@shellmind/protocol": "workspace:*"`.
+- Leakage of Node I/O into protocol: strictly verified by dependency-cruiser.

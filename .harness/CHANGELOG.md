@@ -18,6 +18,20 @@ Notes: <anything the next agent should know>
 
 <!-- entries go below, newest first -->
 
+## 2026-10-07 — F001 Monorepo + protocol core + scripts — COMPLETE
+Branch/commit: feat/F001
+Evidence:
+  - `pnpm typecheck` -> 3/3 packages compile cleanly with zero errors
+  - `pnpm lint` -> eslint passes cleanly
+  - `pnpm test` -> 15/15 unit tests pass in `@shellmind/protocol` (round-trip, envelopes, size limits, error schemas, registry)
+  - `scripts/check-architecture.sh` -> 0 dependency violations (and verified catches seeded violation)
+  - `scripts/init.sh` -> all 9 baseline checks pass
+  - full suite: `pnpm verify` -> green (no regressions)
+  - e2e: N/A — foundation protocol & workspace tooling (not user-facing)
+  - edge cases: malformed JSON, payload size ceiling, unknown message types, invalid envelope versions, missing fields
+Evaluator: acceptance=5 correctness=5 boundaries=5 modularity=5 evidence=5 => avg 5.0 (PASS)
+Notes: Protocol pure core invariant strictly verified by dependency-cruiser. Monorepo wired with pnpm workspaces.
+
 ## 2026-10-07 — F000 Claude Code headless spike — COMPLETE
 Branch/commit: feat/F000
 Evidence:
