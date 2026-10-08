@@ -49,12 +49,17 @@ echo "--- Validating ROADMAP.md state ---"
 ROADMAP_FILE=".harness/ROADMAP.md"
 if [ -f "$ROADMAP_FILE" ]; then
   IN_PROGRESS_COUNT=$(grep -E "^\- \[ \] \*\*F[0-9]+\*\*.*— \`IN PROGRESS\`" "$ROADMAP_FILE" | wc -l | tr -d ' ' || true)
-  if [ "$IN_PROGRESS_COUNT" -ne 1 ]; then
+  TOTAL_COUNT=$(grep -E "^\- \[[x ]\] \*\*F[0-9]+\*\*" "$ROADMAP_FILE" | wc -l | tr -d ' ' || true)
+  COMPLETE_COUNT=$(grep -E "^\- \[x\] \*\*F[0-9]+\*\*.*— \`COMPLETE\`" "$ROADMAP_FILE" | wc -l | tr -d ' ' || true)
+  if [ "$COMPLETE_COUNT" -eq "$TOTAL_COUNT" ] && [ "$TOTAL_COUNT" -gt 0 ]; then
+    echo "🎉 ROADMAP.md verified: All $COMPLETE_COUNT / $TOTAL_COUNT features are COMPLETE (100%)!"
+  elif [ "$IN_PROGRESS_COUNT" -ne 1 ]; then
     echo "❌ ROADMAP.md invariant violated: expected exactly 1 IN PROGRESS feature, found $IN_PROGRESS_COUNT" >&2
     exit 1
+  else
+    ACTIVE_FEATURE=$(grep -E "^\- \[ \] \*\*F[0-9]+\*\*.*— \`IN PROGRESS\`" "$ROADMAP_FILE" | head -n 1)
+    echo "✔ ROADMAP.md verified. Active feature: $ACTIVE_FEATURE"
   fi
-  ACTIVE_FEATURE=$(grep -E "^\- \[ \] \*\*F[0-9]+\*\*.*— \`IN PROGRESS\`" "$ROADMAP_FILE" | head -n 1)
-  echo "✔ ROADMAP.md verified. Active feature: $ACTIVE_FEATURE"
 fi
 
 # 9. Print current task
