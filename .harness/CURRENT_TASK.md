@@ -1,22 +1,21 @@
 # CURRENT TASK
 
-**Feature**: F004 — PTY in agent (node-pty): stream output, input, resize, exit
+**Feature**: F005 — mobile terminal UI (emulator + accessory keys + scrollback + history)
 **Phase**: Phase 02 — Terminal & telemetry
-**Status**: NOT STARTED (F003 PR ready for review and merge)
+**Status**: IN PROGRESS
 
 ## Exact next step
-1. In `packages/protocol`:
-   - Define protocol messages for terminal streaming: `pty.spawn`, `pty.input`, `pty.output`, `pty.resize`, `pty.exit`.
-   - Register PTY messages in `MessageRegistry` and codec.
-2. In `packages/agent`:
-   - Implement `TerminalManager` / `PtySession` using `node-pty` in adapters layer.
-   - Register message handlers in `AgentDaemon` message handler registry.
-   - Support streaming binary/text stdout/stderr, handling stdin input, window resizing, and process termination.
-3. Unit and integration tests driving interactive shell commands over WebSocket.
-4. Verify architecture (`check-architecture`) and full verify (`pnpm verify`).
+1. In `packages/mobile`:
+   - Decision record: xterm.js in WebView vs Native RN terminal component (ADR).
+   - Implement terminal emulator screen integrating `term.open`, `term.data`, `term.input`, `term.resize`, `term.exit`.
+   - Implement mobile-native accessory keyboard row (Ctrl, Esc, Tab, Arrows, `|`, `/`, `-`, `~`).
+   - Support command history recall and tap-to-rerun.
+   - Dynamic viewport resize calculation on orientation change / on-screen keyboard toggle.
+2. Integration / unit tests for terminal screen state machine, input handling, and ANSI stream buffering.
+3. Verify clean architecture (`pnpm check-architecture`) and full verify (`pnpm verify`).
 
 ## Acceptance (summary)
 See `phases/PHASE-02-TERMINAL.md` for full criteria.
 
 ## Definition of done
-Agent spawns interactive PTY session with user shell, streams terminal output chunks over protocol envelope, accepts input and resize frames, handles exit codes cleanly, architecture and tests green.
+Mobile terminal UI connects to agent PTY session, renders ANSI colors/output smoothly, receives input via virtual keyboard and accessory keys, resizes appropriately, and passes full verification with no regressions.

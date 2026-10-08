@@ -5,16 +5,23 @@ import {
   createHelloRejectMessage,
   createPongMessage,
   createErrorMessage,
+  createTermDataMessage,
+  createTermExitMessage,
   type HelloMessage,
   type PingMessage,
+  type TermOpenMessage,
+  type TermInputMessage,
+  type TermResizeMessage,
   type KnownMessage,
 } from "@shellmind/protocol";
 import type { TransportServer, TransportConnection, TransportListener } from "./transport.js";
 import type { IDeviceRegistry, PairedDevice } from "./device.js";
+import type { ITerminalManager, ITerminalSession } from "./terminal.js";
 
 export interface AgentDaemonConfig {
   agentVersion: string;
   serverName: string;
+  terminalManager?: ITerminalManager;
 }
 
 export interface AuthenticatedSession {
@@ -42,6 +49,7 @@ export class AgentDaemon {
     { isAuthenticated: boolean; session?: AuthenticatedSession }
   >();
   private handlers = new Map<string, MessageHandler>();
+  private sessionTerminals = new Map<string, ITerminalSession>();
 
   constructor(
     private readonly transport: TransportServer,
@@ -71,6 +79,77 @@ export class AgentDaemon {
       );
       await ctx.send(pong);
     });
+
+    this.registerHandler("term.open", async (message, ctx) => {
+      if (!this.config.terminalManager) {
+        await ctx.send(
+          createErrorMessage({
+            code: "TERMINAL_NOT_SUPPORTED",
+            message: "PTY terminal manager is not configured on this agent",
+          })
+        );
+        return;
+      }
+
+      // One PTY per session: clean up any existing session
+      const existing = this.sessionTerminals.get(ctx.session.sessionId);
+      if (existing) {
+        existing.kill();
+        this.sessionTerminals.delete(ctx.session.sessionId);
+      }
+
+      const openMsg = message as TermOpenMessage;
+      try {
+        const ptySession = await this.config.terminalManager.createSession({
+          cols: openMsg.payload.cols,
+          rows: openMsg.payload.rows,
+          cwd: openMsg.payload.cwd,
+          env: openMsg.payload.env,
+        });
+
+        this.sessionTerminals.set(ctx.session.sessionId, ptySession);
+
+        ptySession.onData(async (data) => {
+          const dataMsg = createTermDataMessage(
+            { data },
+            { sessionId: ctx.session.sessionId }
+          );
+          await ctx.send(dataMsg);
+        });
+
+        ptySession.onExit(async (exitCode, signal) => {
+          this.sessionTerminals.delete(ctx.session.sessionId);
+          const exitMsg = createTermExitMessage(
+            { exitCode, signal },
+            { sessionId: ctx.session.sessionId }
+          );
+          await ctx.send(exitMsg);
+        });
+      } catch (err) {
+        await ctx.send(
+          createErrorMessage({
+            code: "TERMINAL_SPAWN_FAILED",
+            message: (err as Error).message || "Failed to spawn shell session",
+          })
+        );
+      }
+    });
+
+    this.registerHandler("term.input", async (message, ctx) => {
+      const term = this.sessionTerminals.get(ctx.session.sessionId);
+      if (term) {
+        const inputMsg = message as TermInputMessage;
+        term.write(inputMsg.payload.data);
+      }
+    });
+
+    this.registerHandler("term.resize", async (message, ctx) => {
+      const term = this.sessionTerminals.get(ctx.session.sessionId);
+      if (term) {
+        const resizeMsg = message as TermResizeMessage;
+        term.resize(resizeMsg.payload.cols, resizeMsg.payload.rows);
+      }
+    });
   }
 
   public async start(options: { host: string; port: number }): Promise<TransportListener> {
@@ -79,6 +158,15 @@ export class AgentDaemon {
   }
 
   public async stop(): Promise<void> {
+    for (const term of this.sessionTerminals.values()) {
+      term.kill();
+    }
+    this.sessionTerminals.clear();
+
+    if (this.config.terminalManager) {
+      await this.config.terminalManager.closeAll();
+    }
+
     for (const session of this.activeSessions.values()) {
       await session.connection.close(1000, "Server shutting down");
     }
@@ -101,6 +189,11 @@ export class AgentDaemon {
     conn.onClose(() => {
       const state = this.connectionStates.get(conn.id);
       if (state?.session) {
+        const term = this.sessionTerminals.get(state.session.sessionId);
+        if (term) {
+          term.kill();
+          this.sessionTerminals.delete(state.session.sessionId);
+        }
         this.activeSessions.delete(state.session.sessionId);
       }
       this.connectionStates.delete(conn.id);

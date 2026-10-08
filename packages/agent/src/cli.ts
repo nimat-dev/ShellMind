@@ -6,6 +6,7 @@ import {
   AgentDaemon,
   TailnetTransportServer,
   FileDeviceRegistry,
+  NodePtyManager,
   findTailnetInterface,
 } from "./index.js";
 
@@ -128,6 +129,7 @@ async function handleDev(args: string[]): Promise<void> {
   const daemon = new AgentDaemon(transport, registry, {
     agentVersion: "0.1.0",
     serverName: os.hostname(),
+    terminalManager: new NodePtyManager(),
   });
 
   console.log("=== ShellMind Agent Daemon ===");

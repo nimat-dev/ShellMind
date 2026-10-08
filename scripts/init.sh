@@ -18,6 +18,7 @@ fi
 # 2. Install dependencies
 echo "--- Checking dependencies ---"
 pnpm install --prefer-offline
+find node_modules -name "spawn-helper" -exec chmod +x {} + 2>/dev/null || true
 
 # 3. Typecheck
 echo "--- Running typecheck (tsc -b) ---"

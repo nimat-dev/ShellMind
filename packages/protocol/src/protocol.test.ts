@@ -7,6 +7,11 @@ import {
   createHelloMessage,
   createHelloAckMessage,
   createHelloRejectMessage,
+  createTermOpenMessage,
+  createTermInputMessage,
+  createTermDataMessage,
+  createTermResizeMessage,
+  createTermExitMessage,
   generateMessageId,
   PROTOCOL_VERSION,
   parseMessage,
@@ -18,6 +23,11 @@ import {
   PongMessage,
   ErrorMessage,
   HelloMessage,
+  TermOpenMessage,
+  TermInputMessage,
+  TermDataMessage,
+  TermResizeMessage,
+  TermExitMessage,
 } from "./index.js";
 
 describe("@shellmind/protocol", () => {
@@ -254,6 +264,59 @@ describe("@shellmind/protocol", () => {
       expect(result.success).toBe(true);
       if (result.success) {
         expect(result.data.type).toBe("custom.greeting");
+      }
+    });
+  });
+
+  describe("Terminal Protocol Messages", () => {
+    it("round-trips term.open, term.input, term.data, term.resize, and term.exit", () => {
+      const open = parseMessage<TermOpenMessage>(
+        serializeMessage(createTermOpenMessage({ cols: 120, rows: 40, cwd: "/home/user" }))
+      );
+      expect(open.success).toBe(true);
+      if (open.success) {
+        expect(open.data.type).toBe("term.open");
+        expect(open.data.payload.cols).toBe(120);
+        expect(open.data.payload.rows).toBe(40);
+        expect(open.data.payload.cwd).toBe("/home/user");
+      }
+
+      const input = parseMessage<TermInputMessage>(
+        serializeMessage(createTermInputMessage({ data: "ls -la\n" }))
+      );
+      expect(input.success).toBe(true);
+      if (input.success) {
+        expect(input.data.type).toBe("term.input");
+        expect(input.data.payload.data).toBe("ls -la\n");
+      }
+
+      const data = parseMessage<TermDataMessage>(
+        serializeMessage(createTermDataMessage({ data: "\x1b[32mhello\x1b[0m\r\n" }))
+      );
+      expect(data.success).toBe(true);
+      if (data.success) {
+        expect(data.data.type).toBe("term.data");
+        expect(data.data.payload.data).toBe("\x1b[32mhello\x1b[0m\r\n");
+      }
+
+      const resize = parseMessage<TermResizeMessage>(
+        serializeMessage(createTermResizeMessage({ cols: 100, rows: 30 }))
+      );
+      expect(resize.success).toBe(true);
+      if (resize.success) {
+        expect(resize.data.type).toBe("term.resize");
+        expect(resize.data.payload.cols).toBe(100);
+        expect(resize.data.payload.rows).toBe(30);
+      }
+
+      const exit = parseMessage<TermExitMessage>(
+        serializeMessage(createTermExitMessage({ exitCode: 0, signal: 15 }))
+      );
+      expect(exit.success).toBe(true);
+      if (exit.success) {
+        expect(exit.data.type).toBe("term.exit");
+        expect(exit.data.payload.exitCode).toBe(0);
+        expect(exit.data.payload.signal).toBe(15);
       }
     });
   });

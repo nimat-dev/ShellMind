@@ -15,8 +15,8 @@ Keep exactly one feature `IN PROGRESS`. Full acceptance criteria live in each `p
 - [x] **F003** — Expo mobile skeleton + QR pairing + connect + Online/Offline status — `COMPLETE`
 
 ## Phase 02 — Terminal & telemetry
-- [ ] **F004** — PTY in agent (node-pty): stream output, input, resize, exit — `NOT STARTED`
-- [ ] **F005** — mobile terminal UI (emulator + accessory keys + scrollback + history) — `NOT STARTED`
+- [x] **F004** — PTY in agent (node-pty): stream output, input, resize, exit — `COMPLETE`
+- [ ] **F005** — mobile terminal UI (emulator + accessory keys + scrollback + history) — `IN PROGRESS`
 - [ ] **F006** — system-info tiles (CPU / memory / disk) — `NOT STARTED`
 
 ## Phase 03 — AI (Claude Code bridge)

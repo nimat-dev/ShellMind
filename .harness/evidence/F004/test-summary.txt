@@ -1,0 +1,14 @@
+
+ RUN  v3.2.7 /Users/nimatullahrazmjo/workstation/ShellMind
+
+ ✓ packages/protocol/src/protocol.test.ts (18 tests) 6ms
+ ✓ packages/mobile/src/mobile.test.ts (12 tests) 479ms
+ ✓ packages/agent/src/agent.test.ts (10 tests) 1446ms
+   ✓ Agent Daemon & Transport Integration > PTY Terminal Streaming & Process Lifecycle > spawns PTY on term.open, streams stdout via term.data, handles stdin and exit  591ms
+   ✓ Agent Daemon & Transport Integration > PTY Terminal Streaming & Process Lifecycle > terminates child PTY process when connection drops (no orphan processes)  317ms
+
+ Test Files  3 passed (3)
+      Tests  40 passed (40)
+   Start at  23:19:26
+   Duration  1.84s (transform 202ms, setup 0ms, collect 347ms, tests 1.93s, environment 0ms, prepare 164ms)
+

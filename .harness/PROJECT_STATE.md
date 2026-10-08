@@ -3,32 +3,37 @@
 > Read this first, every session. Rewrite it for a cold reader before you stop.
 
 ## Where we are
-- **Phase**: Phase 01 — Foundation (prove the pipe) — 100% COMPLETE
-- **Active feature**: F003 — Mobile skeleton + QR pairing + connect + status (COMPLETE, PR review & merge pending)
-- **Overall progress**: 4 / 12 features COMPLETE (33%)
+- **Phase**: Phase 02 — Terminal & telemetry (in progress)
+- **Active feature**: F004 — PTY in agent (node-pty) (COMPLETE, PR review & merge pending) -> F005 next
+- **Overall progress**: 5 / 12 features COMPLETE (42%)
 
 ## Last verified
 - **Date**: 2026-10-07
-- **F003 Verification**:
-  - `@shellmind/mobile`:
-    - Setup Expo mobile client skeleton with TypeScript strict mode.
-    - Implemented secure storage abstraction (`ISecureStorage`) with `MemorySecureStorage` and `ExpoSecureStoreAdapter`.
-    - Implemented pairing model & parser (`parsePairingPayload`, `PairingConfig`).
-    - Implemented `AgentClient` state machine (`disconnected`, `connecting`, `handshaking`, `online`, `error`) with `hello` handshake, automatic ping keepalive, and RTT round-trip latency tracking.
-    - Implemented React Native components: `PairingScreen.tsx`, `StatusScreen.tsx`, and root `App.tsx`.
-    - Implemented 12 comprehensive unit and integration tests (`mobile.test.ts`) against live WebSocket servers.
-  - 37/37 unit & integration tests passing across all packages (`pnpm test`).
-  - Architecture verified clean with `dependency-cruiser` (`pnpm check-architecture`, 33 modules, 68 dependencies cruised, 0 violations).
+- **F004 Verification**:
+  - `@shellmind/protocol`:
+    - Wire protocol messages added: `term.open`, `term.input`, `term.data`, `term.resize`, `term.exit`.
+    - Integrated in `MessageRegistry`, codec serialization, and type unions.
+    - 18/18 protocol unit tests pass.
+  - `@shellmind/agent`:
+    - Configured `node-pty@^1.1.0` with workspace build approval in `pnpm-workspace.yaml`.
+    - Added executable permission validation/fix for `spawn-helper` on macOS/Linux.
+    - Pure core interfaces in `src/core/terminal.ts` (`ITerminalSession`, `ITerminalManager`).
+    - PTY adapter in `src/adapters/pty/node-pty.ts`.
+    - Message handlers in `src/core/daemon.ts` (`term.open`, `term.input`, `term.resize`) and automated child process cleanup on socket disconnect/stop (no orphan processes).
+    - Added integration tests in `agent.test.ts` driving real shell session, stdin commands, stdout streaming, resize, exit codes, and disconnect cleanup.
+  - 40/40 tests passing across all packages (`pnpm test`).
+  - Architecture verified clean with `dependency-cruiser` (`pnpm check-architecture`, 38 modules, 82 dependencies cruised, 0 violations).
   - Full suite verified clean (`pnpm verify`).
-- **Git**: branch `feat/F003`
+- **Git**: branch `feat/F004`
 
 ## Next step
-Merge PR for F003, concluding Phase 01 (Foundation). Begin Phase 02 (Terminal & telemetry) with F004 (`node-pty` in agent) on `feat/F004`.
+Merge PR for F004. Advance to F005 (`mobile terminal UI`) on `feat/F005`.
 
 ## Open blockers
 See `BLOCKERS.md`. None open.
 
 ## Notes for the next agent
-- Pure core rule: `packages/protocol` must not import Node builtins or I/O.
-- Agent rule: `packages/agent/src/core` must not import Node builtins or I/O; concrete socket/file I/O belongs in `packages/agent/src/adapters`.
+- Pure core rule: `packages/protocol` and `packages/agent/src/core` must not import Node builtins or I/O.
+- PTY adapter lives exclusively in `packages/agent/src/adapters/pty/`.
+- Mobile imports only `@shellmind/protocol`, never `@shellmind/agent`.
 - Run `./scripts/init.sh` at the start of any session.

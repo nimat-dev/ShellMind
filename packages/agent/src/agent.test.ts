@@ -6,16 +6,23 @@ import { WebSocket } from "ws";
 import {
   createPingMessage,
   createHelloMessage,
+  createTermOpenMessage,
+  createTermInputMessage,
+  createTermResizeMessage,
   parseMessage,
   serializeMessage,
   type HelloAckMessage,
   type HelloRejectMessage,
   type PongMessage,
+  type TermDataMessage,
+  type TermExitMessage,
+  type KnownMessage,
 } from "@shellmind/protocol";
 import {
   AgentDaemon,
   TailnetTransportServer,
   FileDeviceRegistry,
+  NodePtyManager,
   isTailnetIp,
 } from "./index.js";
 
@@ -24,6 +31,7 @@ describe("Agent Daemon & Transport Integration", () => {
   let registryPath: string;
   let registry: FileDeviceRegistry;
   let transport: TailnetTransportServer;
+  let terminalManager: NodePtyManager;
   let daemon: AgentDaemon;
   let serverPort: number;
 
@@ -32,9 +40,11 @@ describe("Agent Daemon & Transport Integration", () => {
     registryPath = path.join(tmpDir, "devices.json");
     registry = new FileDeviceRegistry(registryPath);
     transport = new TailnetTransportServer({ allowLocalhost: true });
+    terminalManager = new NodePtyManager();
     daemon = new AgentDaemon(transport, registry, {
       agentVersion: "0.1.0",
       serverName: "ShellMind Test Daemon",
+      terminalManager,
     });
 
     const listener = await daemon.start({ host: "127.0.0.1", port: 0 });
@@ -252,6 +262,135 @@ describe("Agent Daemon & Transport Integration", () => {
         expect(reject.data.payload.code).toBe("MALFORMED_HANDSHAKE");
       }
       expect(closed).toBe(true);
+    });
+  });
+
+  async function waitForMessage<T extends KnownMessage>(
+    messages: string[],
+    predicate: (msg: KnownMessage) => msg is T,
+    timeoutMs = 3000
+  ): Promise<T> {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      for (const raw of messages) {
+        const parsed = parseMessage(raw);
+        if (parsed.success && predicate(parsed.data)) {
+          return parsed.data;
+        }
+      }
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    throw new Error(`Timeout waiting for message matching predicate after ${timeoutMs}ms`);
+  }
+
+  describe("PTY Terminal Streaming & Process Lifecycle", () => {
+    it("spawns PTY on term.open, streams stdout via term.data, handles stdin and exit", async () => {
+      const pairing = registry.createPairing("Terminal Test Client");
+      const ws = new WebSocket(`ws://127.0.0.1:${serverPort}`);
+
+      await new Promise<void>((resolve) => ws.on("open", () => resolve()));
+
+      const messages: string[] = [];
+      ws.on("message", (data) => messages.push(data.toString("utf-8")));
+
+      // 1. Authenticate with hello
+      const hello = createHelloMessage({
+        deviceId: pairing.device.id,
+        token: pairing.rawToken,
+        clientVersion: "1.0.0",
+        platform: "cli",
+      });
+      ws.send(serializeMessage(hello));
+
+      const ack = await waitForMessage(
+        messages,
+        (m): m is HelloAckMessage => m.type === "hello.ack"
+      );
+      expect(ack.type).toBe("hello.ack");
+
+      // 2. Open PTY terminal session
+      const open = createTermOpenMessage({ cols: 80, rows: 24 });
+      ws.send(serializeMessage(open));
+
+      // Wait for shell to emit initial prompt/banner
+      const firstData = await waitForMessage(
+        messages,
+        (m): m is TermDataMessage => m.type === "term.data"
+      );
+      expect(firstData.type).toBe("term.data");
+
+      // 3. Send command to execute: printf '__MAGIC_ECHO__\n'
+      const input = createTermInputMessage({ data: "printf '__MAGIC_ECHO__\\n'\n" });
+      ws.send(serializeMessage(input));
+
+      // Wait until output contains our magic string
+      const startEchoWait = Date.now();
+      let foundEcho = false;
+      while (Date.now() - startEchoWait < 3000) {
+        const combined = messages
+          .map((m) => parseMessage(m))
+          .filter((r): r is { success: true; data: KnownMessage } => r.success && r.data.type === "term.data")
+          .map((r) => (r.data as TermDataMessage).payload.data)
+          .join("");
+        if (combined.includes("__MAGIC_ECHO__")) {
+          foundEcho = true;
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      expect(foundEcho).toBe(true);
+
+      // 4. Send resize message
+      const resize = createTermResizeMessage({ cols: 120, rows: 40 });
+      ws.send(serializeMessage(resize));
+
+      // 5. Send exit command
+      const exitCmd = createTermInputMessage({ data: "exit 0\n" });
+      ws.send(serializeMessage(exitCmd));
+
+      // Wait for term.exit message
+      const exitMsg = await waitForMessage(
+        messages,
+        (m): m is TermExitMessage => m.type === "term.exit"
+      );
+      expect(exitMsg.payload.exitCode).toBe(0);
+
+      ws.close();
+    });
+
+    it("terminates child PTY process when connection drops (no orphan processes)", async () => {
+      const pairing = registry.createPairing("Orphan Cleanup Client");
+      const ws = new WebSocket(`ws://127.0.0.1:${serverPort}`);
+
+      await new Promise<void>((resolve) => ws.on("open", () => resolve()));
+
+      // Authenticate
+      ws.send(
+        serializeMessage(
+          createHelloMessage({
+            deviceId: pairing.device.id,
+            token: pairing.rawToken,
+            clientVersion: "1.0.0",
+            platform: "cli",
+          })
+        )
+      );
+      await new Promise((resolve) => setTimeout(resolve, 60));
+
+      // Open PTY
+      ws.send(serializeMessage(createTermOpenMessage({ cols: 80, rows: 24 })));
+      await new Promise((resolve) => setTimeout(resolve, 150));
+
+      // Get active session PID
+      const sessions = daemon.getActiveSessions();
+      expect(sessions.length).toBe(1);
+
+      // Close the socket to simulate disconnect
+      ws.close();
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      // Confirm session is cleared
+      expect(daemon.getActiveSessions().length).toBe(0);
     });
   });
 });

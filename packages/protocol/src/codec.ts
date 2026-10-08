@@ -7,6 +7,13 @@ import {
   HelloAckMessage,
   HelloRejectMessage,
 } from "./messages/hello.js";
+import {
+  TermOpenMessage,
+  TermInputMessage,
+  TermDataMessage,
+  TermResizeMessage,
+  TermExitMessage,
+} from "./messages/terminal.js";
 
 /** Max permitted serialized message length in bytes (1 MB default) */
 export const DEFAULT_MAX_MESSAGE_BYTES = 1024 * 1024; // 1 MB
@@ -17,7 +24,12 @@ export type KnownMessage =
   | ErrorMessage
   | HelloMessage
   | HelloAckMessage
-  | HelloRejectMessage;
+  | HelloRejectMessage
+  | TermOpenMessage
+  | TermInputMessage
+  | TermDataMessage
+  | TermResizeMessage
+  | TermExitMessage;
 
 export type ProtocolErrorCode =
   | "ERR_MALFORMED_JSON"

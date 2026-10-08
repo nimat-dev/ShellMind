@@ -10,6 +10,18 @@ import {
   HELLO_REJECT_MESSAGE_TYPE,
   HelloRejectMessageSchema,
 } from "./messages/hello.js";
+import {
+  TERM_OPEN_MESSAGE_TYPE,
+  TermOpenMessageSchema,
+  TERM_INPUT_MESSAGE_TYPE,
+  TermInputMessageSchema,
+  TERM_DATA_MESSAGE_TYPE,
+  TermDataMessageSchema,
+  TERM_RESIZE_MESSAGE_TYPE,
+  TermResizeMessageSchema,
+  TERM_EXIT_MESSAGE_TYPE,
+  TermExitMessageSchema,
+} from "./messages/terminal.js";
 
 export type AnyMessageSchema = z.ZodTypeAny;
 
@@ -24,6 +36,11 @@ export class MessageRegistry {
     this.register(HELLO_MESSAGE_TYPE, HelloMessageSchema);
     this.register(HELLO_ACK_MESSAGE_TYPE, HelloAckMessageSchema);
     this.register(HELLO_REJECT_MESSAGE_TYPE, HelloRejectMessageSchema);
+    this.register(TERM_OPEN_MESSAGE_TYPE, TermOpenMessageSchema);
+    this.register(TERM_INPUT_MESSAGE_TYPE, TermInputMessageSchema);
+    this.register(TERM_DATA_MESSAGE_TYPE, TermDataMessageSchema);
+    this.register(TERM_RESIZE_MESSAGE_TYPE, TermResizeMessageSchema);
+    this.register(TERM_EXIT_MESSAGE_TYPE, TermExitMessageSchema);
   }
 
   public static getInstance(): MessageRegistry {
