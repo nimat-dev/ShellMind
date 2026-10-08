@@ -18,6 +18,19 @@ Notes: <anything the next agent should know>
 
 <!-- entries go below, newest first -->
 
+## 2026-10-07 — F004 PTY in agent (node-pty): stream output, input, resize, exit — COMPLETE
+Branch/commit: feat/F004
+Evidence:
+  - `pnpm test` -> 40/40 tests pass (18 protocol, 10 agent, 12 mobile)
+  - `packages/protocol/src/protocol.test.ts` -> validates round-trip encoding/decoding of `term.open`, `term.input`, `term.data`, `term.resize`, `term.exit`
+  - `packages/agent/src/agent.test.ts` -> validates real PTY spawn via `node-pty`, stdout stream delivery via `term.data`, stdin command execution, window resizing via `term.resize`, clean exit via `term.exit` (exitCode 0)
+  - Orphan process protection -> asserts child PTY process killed immediately upon socket disconnect (0 active sessions remaining)
+  - `scripts/check-architecture.sh` -> 0 dependency violations across 38 modules (PTY strictly in `adapters/pty/**`, `src/core` has 0 Node builtins or I/O)
+  - full suite: `pnpm verify` -> green (typecheck, lint, test, check-architecture)
+  - e2e: integration test against real shell session over WebSocket verifies full terminal lifecycle
+Evaluator: acceptance=5 correctness=5 boundaries=5 modularity=5 evidence=5 => avg 5.0 (PASS)
+Notes: Auto-resolves macOS `spawn-helper` permission bug via `ensureSpawnHelperExecutable` before spawn and `scripts/init.sh`. Ready for F005 (mobile terminal UI).
+
 ## 2026-10-07 — F003 Mobile skeleton + QR pairing + connect + status — COMPLETE
 Branch/commit: feat/F003
 Evidence:

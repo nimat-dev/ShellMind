@@ -4,23 +4,23 @@ Turn the proven pipe into a usable terminal that feels native on a phone, plus a
 health. This is the SSH-client parity we get for free — necessary, not the pitch.
 
 ## F004 — PTY in agent (stream, input, resize, exit)
-**Status**: NOT STARTED
+**Status**: COMPLETE (PR #5)
 
 ### Acceptance criteria
-- [ ] `pty` adapter (`node-pty`) spawns the user's shell; `term.open`→PTY, `term.input`→stdin,
+- [x] `pty` adapter (`node-pty`) spawns the user's shell; `term.open`→PTY, `term.input`→stdin,
       `term.data`→streamed output, `term.resize`→cols/rows, `term.exit`→close with code.
-- [ ] Runs as the logged-in user, inheriting their env; one PTY per session, cleaned up on
+- [x] Runs as the logged-in user, inheriting their env; one PTY per session, cleaned up on
       disconnect (no orphan processes).
-- [ ] Edge/error cases (`edge-cases.md`): huge/rapid output (backpressure, no OOM), control chars
+- [x] Edge/error cases (`edge-cases.md`): huge/rapid output (backpressure, no OOM), control chars
       + ANSI colors preserved, UTF-8/emoji, resize mid-command updates `COLUMNS`, shell exit +
       re-open, disconnect kills the PTY.
-- [ ] E2E/integration: drive `printf`/`ls`/a long-running command over a real socket; assert
+- [x] E2E/integration: drive `printf`/`ls`/a long-running command over a real socket; assert
       output + exit; assert no leaked child after disconnect. Evidence under `.harness/evidence/F004/`.
-- [ ] Boundary invariants: PTY only in `adapters/pty/**`; `check-architecture` passes.
-- [ ] Verification: full verify green, no regressions.
+- [x] Boundary invariants: PTY only in `adapters/pty/**`; `check-architecture` passes.
+- [x] Verification: full verify green, no regressions.
 
 ## F005 — Mobile terminal UI
-**Status**: NOT STARTED
+**Status**: IN PROGRESS
 
 ### Acceptance criteria
 - [ ] A real terminal emulator view (decision: xterm.js in a WebView vs native RN term — record in

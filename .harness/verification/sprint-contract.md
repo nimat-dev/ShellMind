@@ -1,54 +1,53 @@
-# Sprint Contract — F003: Mobile skeleton + QR pairing + connect + status
+# Sprint Contract — F004: PTY in agent (node-pty): stream output, input, resize, exit
 
-Feature: F003 — Mobile skeleton + QR pairing + connect + status
-Phase: Phase 01 — Foundation (prove the pipe)
+Feature: F004 — PTY in agent (node-pty): stream output, input, resize, exit
+Phase: Phase 02 — Terminal & telemetry
 Date: 2026-10-07
 
 ## 1. Scope & Acceptance Criteria
-- [x] Expo mobile client skeleton configured with TypeScript strict mode in `packages/mobile`.
-- [x] Secure storage abstraction (`ISecureStorage`) with `ExpoSecureStoreAdapter` for native runtime and test fallback. Device token stored securely, never in plaintext source.
-- [x] Pairing model & screen: parses pairing payload (`{ host, port, deviceId, token }`) from QR code scan or manual input.
-- [x] Connection client (`AgentClient`):
-  - Connects to agent daemon over WebSocket (`ws://<host>:<port>`).
-  - Initiates `hello` handshake frame using `@shellmind/protocol`.
-  - Transitions to `Online` upon `hello.ack`; captures `sessionId` and `serverName`.
-  - Computes and tracks ping RTT round-trip latency (`rttMs`).
-  - Transitions to `Offline` on connection loss; gracefully attempts reconnection.
-  - Captures `hello.reject` with actionable error messages (`FORBIDDEN`, `REVOKED`, `UNAUTHORIZED`).
-- [x] Status UI (`App` / `StatusScreen`): displays Online/Offline badge, RTT latency, host, session details, and unpair option.
-- [x] Edge/error cases from §2 covered: wrong token, agent offline, socket drops, unpair flow.
-- [x] Boundary invariants: mobile imports `@shellmind/protocol` only, never `packages/agent`; `check-architecture` passes.
-- [x] Verification: full verify (`pnpm verify`) passes cleanly.
+- [x] Wire protocol messages in `@shellmind/protocol`:
+  - `term.open`: request to open a new PTY session with initial dimensions (`cols`, `rows`), optional `cwd`, and optional `env`.
+  - `term.input`: client keystroke / stdin transmission.
+  - `term.data`: server PTY stdout/stderr chunk streaming to client.
+  - `term.resize`: client viewport resize event (`cols`, `rows`).
+  - `term.exit`: server PTY process termination notification (`exitCode`, `signal`).
+- [x] Protocol schemas added to `MessageRegistry` and codec `KnownMessage` union with 100% round-trip unit test coverage.
+- [x] Pure core terminal interfaces in `packages/agent/src/core/terminal.ts` (`ITerminalSession`, `ITerminalManager`).
+- [x] Concrete adapter implemented in `packages/agent/src/adapters/pty/node-pty.ts` using `node-pty`:
+  - Auto-detection and executable permission fix (`0755`) for macOS/Linux `spawn-helper`.
+  - Clean child process lifecycle management and signal forwarding.
+- [x] Agent daemon message dispatch in `packages/agent/src/core/daemon.ts`:
+  - Handles `term.open`, `term.input`, `term.resize`.
+  - Automated teardown: kills child PTY processes immediately when client socket disconnects or agent daemon stops (no orphan processes).
+- [x] Architecture boundary: pure core in `src/core/` does not import `node-pty` or OS builtins; `check-architecture.sh` passes with 0 violations.
+- [x] Full integration tests in `packages/agent/src/agent.test.ts` verifying real PTY spawn, stdout streaming, stdin command execution, resize, exit code reporting, and orphan cleanup on disconnect.
 
 ## 2. Edge cases & failure paths (from `verification/edge-cases.md`)
-- Wrong or expired token -> `hello.reject` received, mobile displays clear error message ("Pairing rejected: Invalid credentials"), does not crash.
-- Agent offline / unreachable host -> Socket emits error / close, client transitions to `Offline` state with retry button.
-- Malformed pairing JSON -> Parsing validator flags error before attempting connection.
-- Sudden disconnect / agent restarted -> Socket close event transitions client to `Offline`, resumes reconnection loop.
-- Unpairing -> Clears secure storage token, cleans up active socket, resets state back to Pairing screen.
+- `node-pty` macOS prebuild permission issue: `spawn-helper` extracted with mode `0644`. Resolved via `ensureSpawnHelperExecutable` before spawn and `scripts/init.sh`.
+- Client disconnects while command is executing: daemon catches socket `close`, immediately invokes `term.kill()`, removing from active sessions and preventing zombie / orphan processes.
+- Process exits naturally: `session.onExit` event broadcasts `term.exit` frame and cleans up session registry.
+- Client attempts multiple `term.open` on the same session: existing PTY is safely terminated and replaced.
 
 ## 3. E2E scenario(s)
-Integration tests in `packages/mobile/src/mobile.test.ts` drive end-to-end socket interaction against a WebSocket transport server:
-1. Valid pairing payload -> connects -> `hello.ack` -> reports `Online` with ping RTT.
-2. Invalid token -> connects -> `hello.reject` -> reports `Error: FORBIDDEN`.
-3. Agent server stops -> reports `Offline`, unpair resets state to clean pairing view.
+Integration tests in `packages/agent/src/agent.test.ts`:
+1. Authenticate client -> `term.open` -> verify initial shell prompt received via `term.data`.
+2. Send command via `term.input` (`printf '__MAGIC_ECHO__\n'`) -> verify response contains echo.
+3. Send `term.resize` (120x40) -> verify handled.
+4. Send `exit 0` via `term.input` -> verify `term.exit` received with exitCode 0.
+5. Disconnect socket -> verify active PTY is terminated and session map cleared.
 
 ## 4. Plan (thinnest vertical slice)
-1. Write sprint contract (`.harness/verification/sprint-contract.md`).
-2. Implement secure storage abstraction (`packages/mobile/src/storage.ts`).
-3. Implement pairing payload schema and validator (`packages/mobile/src/pairing.ts`).
-4. Implement `AgentClient` state machine (`packages/mobile/src/client.ts`) managing socket lifecycle, `hello` handshake, ping keepalive, and RTT measurement.
-5. Implement React components: `PairingScreen.tsx`, `StatusScreen.tsx`, and root `App.tsx`.
-6. Write integration and unit tests in `packages/mobile/src/mobile.test.ts`.
-7. Verify architecture (`pnpm check-architecture`) and full verify (`pnpm verify`).
+1. Protocol schemas for terminal messages in `@shellmind/protocol`.
+2. Core interfaces (`ITerminalSession`, `ITerminalManager`) in `packages/agent/src/core/terminal.ts`.
+3. Adapter implementation (`NodePtySession`, `NodePtyManager`) in `packages/agent/src/adapters/pty/node-pty.ts`.
+4. Message handlers in `packages/agent/src/core/daemon.ts` and CLI integration.
+5. End-to-end integration tests in `packages/agent/src/agent.test.ts`.
+6. Monorepo verification and architecture validation.
 
 ## 5. Out of scope (parked, not built)
-- Terminal PTY streaming / terminal emulator (Phase 02 / F004-F005).
-- System telemetry tiles (Phase 02 / F006).
-- Claude Code bridge (Phase 03).
+- Mobile terminal renderer / xterm.js / WebView terminal (F005).
+- Mobile accessory keyboard bar (F005).
+- System telemetry metrics (F006).
 
 ## 6. New dependencies (with justification)
-- `react`, `react-native`, `expo`, `expo-secure-store` for Expo mobile runtime.
-
-## 7. Risks
-- Platform difference in WebSockets: React Native has global `WebSocket`. Tests running in Node environment can use standard `ws` or polyfilled `WebSocket`.
+- `node-pty@^1.1.0` in `packages/agent`: Industry-standard pseudoterminal binding for Node.js, required for native shell emulation.
