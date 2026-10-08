@@ -16,3 +16,4 @@ spike/
 .env
 .env.local
 *.tsbuildinfo
+.expo/
