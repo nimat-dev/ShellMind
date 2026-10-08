@@ -47,3 +47,8 @@ DEC-009 (2026-10-07): Programmatic permission interception uses an internal MCP 
 `--permission-prompt-tool mcp__<server>__<tool>` and requires `--verbose` with `--output-format stream-json`.
 Decisions are delivered as JSON strings `{ behavior: "allow" }` or `{ behavior: "deny", message: "..." }`.
 — Proven in F000 spike; avoids brittle TTY parsing or SDK stdin handshake. [ADR-0001]
+
+DEC-010 (2026-10-07): Mobile terminal UI uses a **Native React Native ANSI Stream Buffer (`TerminalBuffer`)**
+rather than xterm.js in a WebView. Delivers zero input latency, native mobile keyboard & accessory bar
+integration, and pure-TypeScript unit-testability without native webview binary overhead. [ADR-0002]
+

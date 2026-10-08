@@ -5,6 +5,7 @@ import { type PairingConfig } from "./pairing.js";
 import { type ISecureStorage, ExpoSecureStoreAdapter } from "./storage.js";
 import { PairingScreen } from "./components/PairingScreen.js";
 import { StatusScreen } from "./components/StatusScreen.js";
+import { TerminalScreen } from "./components/TerminalScreen.js";
 
 const STORAGE_PAIRING_KEY = "shellmind.pairing_config";
 
@@ -20,6 +21,7 @@ export const App: React.FC<AppProps> = ({ storage, client }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [pairingConfig, setPairingConfig] = useState<PairingConfig | null>(null);
   const [clientState, setClientState] = useState<ClientState>(agentClient.getState());
+  const [activeTab, setActiveTab] = useState<"terminal" | "status">("terminal");
 
   useEffect(() => {
     const unsubscribe = agentClient.onStateChange((state) => {
@@ -48,6 +50,7 @@ export const App: React.FC<AppProps> = ({ storage, client }) => {
 
   const handlePair = async (config: PairingConfig) => {
     setPairingConfig(config);
+    setActiveTab("terminal");
     await secureStorage.setItem(STORAGE_PAIRING_KEY, JSON.stringify(config));
     agentClient.connect(config);
   };
@@ -55,6 +58,7 @@ export const App: React.FC<AppProps> = ({ storage, client }) => {
   const handleUnpair = async () => {
     agentClient.disconnect();
     setPairingConfig(null);
+    setActiveTab("terminal");
     await secureStorage.deleteItem(STORAGE_PAIRING_KEY);
   };
 
@@ -80,15 +84,23 @@ export const App: React.FC<AppProps> = ({ storage, client }) => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#0f172a" />
+      <StatusBar barStyle="light-content" backgroundColor="#0d1117" />
       {pairingConfig ? (
-        <StatusScreen
-          state={clientState}
-          pairingConfig={pairingConfig}
-          onPing={handlePing}
-          onReconnect={handleReconnect}
-          onUnpair={handleUnpair}
-        />
+        activeTab === "terminal" ? (
+          <TerminalScreen
+            client={agentClient}
+            onSwitchToStatus={() => setActiveTab("status")}
+          />
+        ) : (
+          <StatusScreen
+            state={clientState}
+            pairingConfig={pairingConfig}
+            onPing={handlePing}
+            onReconnect={handleReconnect}
+            onUnpair={handleUnpair}
+            onSwitchToTerminal={() => setActiveTab("terminal")}
+          />
+        )
       ) : (
         <PairingScreen
           onPair={handlePair}

@@ -9,6 +9,7 @@ export interface StatusScreenProps {
   onPing: () => void;
   onReconnect: () => void;
   onUnpair: () => void;
+  onSwitchToTerminal?: () => void;
 }
 
 export const StatusScreen: React.FC<StatusScreenProps> = ({
@@ -17,6 +18,7 @@ export const StatusScreen: React.FC<StatusScreenProps> = ({
   onPing,
   onReconnect,
   onUnpair,
+  onSwitchToTerminal,
 }) => {
   const isOnline = state.status === "online";
   const isConnecting = state.status === "connecting" || state.status === "handshaking";
@@ -40,10 +42,21 @@ export const StatusScreen: React.FC<StatusScreenProps> = ({
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>ShellMind Agent</Text>
-        <View style={[styles.badge, { backgroundColor: badge.bg }]}>
-          <Text style={[styles.badgeText, { color: badge.color }]}>{badge.text}</Text>
+        <View>
+          <Text style={styles.title}>ShellMind Agent</Text>
+          <View style={[styles.badge, { backgroundColor: badge.bg }]}>
+            <Text style={[styles.badgeText, { color: badge.color }]}>{badge.text}</Text>
+          </View>
         </View>
+        {onSwitchToTerminal && (
+          <TouchableOpacity
+            style={styles.termButton}
+            onPress={onSwitchToTerminal}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.termButtonText}>Terminal ➜</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       <View style={styles.card}>
@@ -198,6 +211,17 @@ const styles = StyleSheet.create({
   },
   secondaryButtonText: {
     color: "#cbd5e1",
+    fontSize: 14,
+  },
+  termButton: {
+    backgroundColor: "#22c55e",
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+  },
+  termButtonText: {
+    color: "#ffffff",
+    fontWeight: "700",
     fontSize: 14,
   },
 });

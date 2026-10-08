@@ -4,30 +4,28 @@
 
 ## Where we are
 - **Phase**: Phase 02 — Terminal & telemetry (in progress)
-- **Active feature**: F004 — PTY in agent (node-pty) (COMPLETE, PR review & merge pending) -> F005 next
-- **Overall progress**: 5 / 12 features COMPLETE (42%)
+- **Active feature**: F005 — Mobile terminal UI (COMPLETE, PR review & merge pending) -> F006 next
+- **Overall progress**: 6 / 12 features COMPLETE (50%)
 
 ## Last verified
 - **Date**: 2026-10-07
-- **F004 Verification**:
-  - `@shellmind/protocol`:
-    - Wire protocol messages added: `term.open`, `term.input`, `term.data`, `term.resize`, `term.exit`.
-    - Integrated in `MessageRegistry`, codec serialization, and type unions.
-    - 18/18 protocol unit tests pass.
-  - `@shellmind/agent`:
-    - Configured `node-pty@^1.1.0` with workspace build approval in `pnpm-workspace.yaml`.
-    - Added executable permission validation/fix for `spawn-helper` on macOS/Linux.
-    - Pure core interfaces in `src/core/terminal.ts` (`ITerminalSession`, `ITerminalManager`).
-    - PTY adapter in `src/adapters/pty/node-pty.ts`.
-    - Message handlers in `src/core/daemon.ts` (`term.open`, `term.input`, `term.resize`) and automated child process cleanup on socket disconnect/stop (no orphan processes).
-    - Added integration tests in `agent.test.ts` driving real shell session, stdin commands, stdout streaming, resize, exit codes, and disconnect cleanup.
-  - 40/40 tests passing across all packages (`pnpm test`).
-  - Architecture verified clean with `dependency-cruiser` (`pnpm check-architecture`, 38 modules, 82 dependencies cruised, 0 violations).
+- **F005 Verification**:
+  - `ADR-0002`: Recorded architectural decision selecting Native React Native ANSI Stream Buffer (`TerminalBuffer`) over xterm.js in WebView.
+  - `@shellmind/mobile`:
+    - Implemented high-performance `TerminalBuffer` in `src/terminal/buffer.ts` with ANSI 16/256/truecolor parsing, carriage return `\r` overwrites, backspace `\b`, OSC stripping, and 2000-line scrollback buffer.
+    - Added 8 unit tests in `src/terminal/buffer.test.ts`.
+    - Added terminal client streaming methods (`openTerminal`, `sendTerminalInput`, `resizeTerminal`, `onTerminalData`, `onTerminalExit`) to `AgentClient`.
+    - Implemented React Native components: `AccessoryBar.tsx`, `HistoryModal.tsx`, and `TerminalScreen.tsx` with responsive layout resize tracking and auto-scrolling monospace display.
+    - Updated `App.tsx` with tab switching between Terminal (default) and Status views.
+    - Added terminal streaming integration test in `src/mobile.test.ts` driving live WebSocket server.
+    - Flow specification created at `.maestro/terminal_flow.yaml`.
+  - 49/49 tests passing across all packages (`pnpm test`).
+  - Architecture verified clean with `dependency-cruiser` (`pnpm check-architecture`, 42 modules, 97 dependencies cruised, 0 violations).
   - Full suite verified clean (`pnpm verify`).
-- **Git**: branch `feat/F004`
+- **Git**: branch `feat/F005`
 
 ## Next step
-Merge PR for F004. Advance to F005 (`mobile terminal UI`) on `feat/F005`.
+Merge PR for F005. Advance to F006 (`system-info tiles`) on `feat/F006`.
 
 ## Open blockers
 See `BLOCKERS.md`. None open.

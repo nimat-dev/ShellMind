@@ -1,53 +1,63 @@
-# Sprint Contract — F004: PTY in agent (node-pty): stream output, input, resize, exit
+# Sprint Contract — F005: Mobile terminal UI (emulator + accessory keys + scrollback + history)
 
-Feature: F004 — PTY in agent (node-pty): stream output, input, resize, exit
+Feature: F005 — Mobile terminal UI (emulator + accessory keys + scrollback + history)
 Phase: Phase 02 — Terminal & telemetry
 Date: 2026-10-07
 
 ## 1. Scope & Acceptance Criteria
-- [x] Wire protocol messages in `@shellmind/protocol`:
-  - `term.open`: request to open a new PTY session with initial dimensions (`cols`, `rows`), optional `cwd`, and optional `env`.
-  - `term.input`: client keystroke / stdin transmission.
-  - `term.data`: server PTY stdout/stderr chunk streaming to client.
-  - `term.resize`: client viewport resize event (`cols`, `rows`).
-  - `term.exit`: server PTY process termination notification (`exitCode`, `signal`).
-- [x] Protocol schemas added to `MessageRegistry` and codec `KnownMessage` union with 100% round-trip unit test coverage.
-- [x] Pure core terminal interfaces in `packages/agent/src/core/terminal.ts` (`ITerminalSession`, `ITerminalManager`).
-- [x] Concrete adapter implemented in `packages/agent/src/adapters/pty/node-pty.ts` using `node-pty`:
-  - Auto-detection and executable permission fix (`0755`) for macOS/Linux `spawn-helper`.
-  - Clean child process lifecycle management and signal forwarding.
-- [x] Agent daemon message dispatch in `packages/agent/src/core/daemon.ts`:
-  - Handles `term.open`, `term.input`, `term.resize`.
-  - Automated teardown: kills child PTY processes immediately when client socket disconnects or agent daemon stops (no orphan processes).
-- [x] Architecture boundary: pure core in `src/core/` does not import `node-pty` or OS builtins; `check-architecture.sh` passes with 0 violations.
-- [x] Full integration tests in `packages/agent/src/agent.test.ts` verifying real PTY spawn, stdout streaming, stdin command execution, resize, exit code reporting, and orphan cleanup on disconnect.
+- [x] ADR-0002 recorded: Native React Native ANSI Stream Buffer vs xterm.js in WebView.
+- [x] Pure TypeScript terminal buffer (`TerminalBuffer` in `packages/mobile/src/terminal/buffer.ts`):
+  - Ingests streaming `term.data` text chunks.
+  - Parses ANSI color codes (SGR standard & bright foregrounds/backgrounds, bold, dim, underline, inverse, reset).
+  - Handles terminal control characters (`\r`, `\n`, `\b`, `\x1b[2K`, `\x1b[K`).
+  - Implements scrollback line buffer with configurable line limit (e.g. 2000 lines).
+  - Produces structured line spans for rendering.
+- [x] Mobile-native accessory keyboard row:
+  - Quick action keys: `Ctrl`, `Esc`, `Tab`, `↑`, `↓`, `←`, `→`, `|`, `/`, `-`, `~`.
+  - When `Ctrl` modifier is active, typing a character generates control code (e.g. `Ctrl+C` -> `\x03`, `Ctrl+D` -> `\x04`, `Ctrl+Z` -> `\x1a`).
+- [x] Command history buffer:
+  - Stores executed input commands.
+  - Up / Down arrow navigation cycles through previous commands.
+  - History drawer / list for tap-to-rerun.
+- [x] Terminal UI (`TerminalScreen.tsx`):
+  - Monospace font, dark high-contrast terminal theme.
+  - Autoscroll on new output with scrollback inspection.
+  - Window resize trigger (`term.resize`) calculated on orientation / viewport change.
+  - Disconnect banner preserving terminal output without freezing UI.
+- [x] Client integration in `AgentClient`:
+  - Terminal session management (`openTerminal`, `sendTerminalInput`, `resizeTerminal`).
+  - Terminal event listeners (`onTerminalData`, `onTerminalExit`).
+- [x] Comprehensive unit and integration tests in `packages/mobile/src/terminal/buffer.test.ts` and `packages/mobile/src/mobile.test.ts`.
+- [x] Clean architecture (`check-architecture.sh` 0 violations). Full verify (`pnpm verify`) green.
 
 ## 2. Edge cases & failure paths (from `verification/edge-cases.md`)
-- `node-pty` macOS prebuild permission issue: `spawn-helper` extracted with mode `0644`. Resolved via `ensureSpawnHelperExecutable` before spawn and `scripts/init.sh`.
-- Client disconnects while command is executing: daemon catches socket `close`, immediately invokes `term.kill()`, removing from active sessions and preventing zombie / orphan processes.
-- Process exits naturally: `session.onExit` event broadcasts `term.exit` frame and cleans up session registry.
-- Client attempts multiple `term.open` on the same session: existing PTY is safely terminated and replaced.
+- Rapid / large output chunks (thousands of lines): buffer trims scrollback cleanly without OOM or lag.
+- ANSI color sequences split across chunks: buffer maintains parser state.
+- Carriage returns (`\r`) overwriting lines (e.g. download progress bars `[==>   ] 20%` -> `[====> ] 40%`).
+- Disconnect mid-session: UI displays disconnected banner, disables input, but retains full scrollback history.
+- Rapid typing and control character key combinations (`Ctrl+C` sends interrupt `\x03`).
+- Window resize: calculates reasonable cols/rows and sends `term.resize`.
 
 ## 3. E2E scenario(s)
-Integration tests in `packages/agent/src/agent.test.ts`:
-1. Authenticate client -> `term.open` -> verify initial shell prompt received via `term.data`.
-2. Send command via `term.input` (`printf '__MAGIC_ECHO__\n'`) -> verify response contains echo.
-3. Send `term.resize` (120x40) -> verify handled.
-4. Send `exit 0` via `term.input` -> verify `term.exit` received with exitCode 0.
-5. Disconnect socket -> verify active PTY is terminated and session map cleared.
+1. Client connects -> opens terminal session -> receives banner and prompt via `term.data`.
+2. User enters command (`pwd`) -> receives streamed output -> command added to history.
+3. User presses `↑` accessory key -> recalls previous command (`pwd`).
+4. User taps `Ctrl` + `C` -> sends `\x03` interrupt signal.
+5. Resize viewport -> sends `term.resize` with updated dimensions.
+6. Connection drops -> status banner shows Offline, scrollback remains visible and interactive.
 
 ## 4. Plan (thinnest vertical slice)
-1. Protocol schemas for terminal messages in `@shellmind/protocol`.
-2. Core interfaces (`ITerminalSession`, `ITerminalManager`) in `packages/agent/src/core/terminal.ts`.
-3. Adapter implementation (`NodePtySession`, `NodePtyManager`) in `packages/agent/src/adapters/pty/node-pty.ts`.
-4. Message handlers in `packages/agent/src/core/daemon.ts` and CLI integration.
-5. End-to-end integration tests in `packages/agent/src/agent.test.ts`.
-6. Monorepo verification and architecture validation.
+1. Create `packages/mobile/src/terminal/buffer.ts` (ANSI parser & scrollback buffer state machine).
+2. Write unit tests in `packages/mobile/src/terminal/buffer.test.ts`.
+3. Add terminal methods to `AgentClient` in `packages/mobile/src/client.ts`.
+4. Create React components: `AccessoryBar.tsx`, `HistoryModal.tsx`, `TerminalScreen.tsx`, and wire in `App.tsx`.
+5. Add integration tests in `packages/mobile/src/mobile.test.ts`.
+6. Run full verification (`pnpm verify`), capture evidence, and open PR.
 
 ## 5. Out of scope (parked, not built)
-- Mobile terminal renderer / xterm.js / WebView terminal (F005).
-- Mobile accessory keyboard bar (F005).
-- System telemetry metrics (F006).
+- System telemetry metrics tiles (F006).
+- Claude Code AI bridge (F007-F009).
+- Alternate screen buffer (vim/htop curses full-screen redraw) — deferred per ADR-0002.
 
 ## 6. New dependencies (with justification)
-- `node-pty@^1.1.0` in `packages/agent`: Industry-standard pseudoterminal binding for Node.js, required for native shell emulation.
+None required. Uses built-in React Native components and pure TypeScript.
