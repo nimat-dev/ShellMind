@@ -24,6 +24,10 @@ import {
   type ProjectListRespMessage,
   type ProjectSetRespPayload,
   type ProjectSetRespMessage,
+  createPermResponseMessage,
+  type PermRequestPayload,
+  type PermRequestMessage,
+  type PermissionDecision,
 } from "@shellmind/protocol";
 import type { PairingConfig } from "./pairing.js";
 
@@ -62,6 +66,7 @@ export class AgentClient {
   private agentStreamListeners: Set<(event: AgentStreamEvent) => void> = new Set();
   private projectListListeners: Set<(resp: ProjectListRespPayload) => void> = new Set();
   private projectSetListeners: Set<(resp: ProjectSetRespPayload) => void> = new Set();
+  private permissionRequestListeners: Set<(req: PermRequestPayload) => void> = new Set();
 
   private state: ClientState = {
     status: "disconnected",
@@ -214,6 +219,31 @@ export class AgentClient {
     if (!this.socket || this.state.status !== "online") return false;
     const msg = createProjectSetMessage(
       { cwd },
+      { sessionId: this.state.sessionId ?? undefined }
+    );
+    try {
+      this.socket.send(serializeMessage(msg));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  public onPermissionRequest(listener: (req: PermRequestPayload) => void): () => void {
+    this.permissionRequestListeners.add(listener);
+    return () => {
+      this.permissionRequestListeners.delete(listener);
+    };
+  }
+
+  public respondPermission(
+    requestId: string,
+    decision: PermissionDecision,
+    rememberForSession?: boolean
+  ): boolean {
+    if (!this.socket || this.state.status !== "online") return false;
+    const msg = createPermResponseMessage(
+      { requestId, decision, rememberForSession },
       { sessionId: this.state.sessionId ?? undefined }
     );
     try {
@@ -425,6 +455,14 @@ export class AgentClient {
       const setResp = message as ProjectSetRespMessage;
       for (const listener of this.projectSetListeners) {
         listener(setResp.payload);
+      }
+      return;
+    }
+
+    if (message.type === "perm.request") {
+      const permReq = message as PermRequestMessage;
+      for (const listener of this.permissionRequestListeners) {
+        listener(permReq.payload);
       }
       return;
     }

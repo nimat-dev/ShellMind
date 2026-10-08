@@ -8,4 +8,5 @@ export * from "./components/PairingScreen.js";
 export * from "./components/SysInfoTiles.js";
 export * from "./components/StatusScreen.js";
 export * from "./components/TerminalScreen.js";
+export * from "./components/PermissionCard.js";
 export * from "./App.js";

@@ -18,6 +18,20 @@ Notes: <anything the next agent should know>
 
 <!-- entries go below, newest first -->
 
+## 2026-10-08 — F008 Permission bridge + confirm UI + allowlist + audit log — COMPLETE
+Branch/commit: feat/F008
+Evidence:
+  - `pnpm test` -> 99/99 tests pass (28 protocol, 43 agent, 28 mobile)
+  - `packages/protocol/src/protocol.test.ts` -> validates `perm.request` and `perm.response` messages, pure risk classification (`classifyRisk`: low, medium, high), and pure read-only allowlist evaluator (`isReadonlyCommand`)
+  - `packages/agent/src/claude-driver.test.ts` -> 23 unit tests verifying `ClaudeStreamParser` stdio `control_request` interception, `LocalClaudeDriver` prompt and permission release (`control_response` allow/deny), `PermissionBridge` (auto-allow safe reads, interactive prompt, idempotency, session allowlist, timeout to deny, `denyAllPending`), and `FileAuditLogger` (atomic append-only mode 0600, log-before-execute guarantee)
+  - `packages/agent/src/agent.test.ts` -> 20 integration tests verifying live socket permission routing, mobile approval releasing tool and writing audit entry to disk, denial handling, disconnect mid-prompt cleanup, and immediate denial on device revocation
+  - `packages/mobile/src/mobile.test.ts` -> 28 tests verifying `AgentClient.onPermissionRequest()` and `respondPermission()` over live socket, and `PermissionCard` React Native component structure, risk badges, and interaction handlers
+  - E2E flow specification recorded in `.maestro/permission_flow.yaml`
+  - `scripts/check-architecture.sh` -> 0 dependency violations across 61 modules (pure core preserved, zero Node builtins or I/O imports in `src/core`)
+  - full suite: `pnpm verify` -> green (typecheck, lint, test, check-architecture)
+Evaluator: acceptance=5 correctness=5 boundaries=5 modularity=5 evidence=5 => avg 5.0 (PASS)
+Notes: Permission bridge complete with security-first audit trail and mobile confirmation card. Ready for F009 (Chat UI + session continuity + project picker).
+
 ## 2026-10-07 — F007 Claude driver (spawn claude -p stream-json, project cwd, abort) — COMPLETE
 Branch/commit: feat/F007
 Evidence:

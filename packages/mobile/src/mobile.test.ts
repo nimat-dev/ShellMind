@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { WebSocketServer, WebSocket as WsClient } from "ws";
 import {
   parseMessage,
@@ -22,11 +22,25 @@ import {
   type ProjectListRespPayload,
   type ProjectSetRespPayload,
   type ProjectSetMessage,
+  createPermRequestMessage,
+  type PermRequestPayload,
+  type PermResponseMessage,
 } from "@shellmind/protocol";
 import { parsePairingPayload } from "./pairing.js";
 import { MemorySecureStorage, ExpoSecureStoreAdapter } from "./storage.js";
 import { AgentClient } from "./client.js";
 import { TerminalBuffer } from "./terminal/buffer.js";
+import React from "react";
+
+vi.mock("react-native", () => ({
+  View: "View",
+  Text: "Text",
+  TouchableOpacity: "TouchableOpacity",
+  StyleSheet: { create: (styles: unknown) => styles },
+  Platform: { OS: "ios", select: (obj: Record<string, unknown>) => obj["ios"] ?? obj["default"] },
+}));
+
+import { PermissionCard } from "./components/PermissionCard.js";
 
 describe("Mobile Package Unit & Integration Tests", () => {
   describe("Pairing Payload Parser & Validator", () => {
@@ -760,6 +774,186 @@ describe("Mobile Package Unit & Integration Tests", () => {
       expect(setResult!.currentCwd).toBe("/workspace/OtherProject");
 
       client.disconnect();
+    });
+  });
+
+  describe("Permission Flow & Confirmation Card (F008)", () => {
+    let wss: WebSocketServer;
+    let serverPort: number;
+
+    beforeEach(async () => {
+      wss = new WebSocketServer({ port: 0 });
+      await new Promise<void>((resolve) => wss.on("listening", () => resolve()));
+      serverPort = (wss.address() as { port: number }).port;
+    });
+
+    afterEach(async () => {
+      await new Promise<void>((resolve) => wss.close(() => resolve()));
+    });
+
+    it("receives perm.request and sends perm.response allow with session remember", async () => {
+      let receivedPermResponse: PermResponseMessage | null = null;
+
+      wss.on("connection", (ws) => {
+        ws.on("message", (raw) => {
+          const parsed = parseMessage(raw.toString());
+          if (!parsed.success) return;
+
+          if (parsed.data.type === "hello") {
+            ws.send(
+              serializeMessage(
+                createHelloAckMessage(
+                  {
+                    sessionId: "ses_perm_test",
+                    agentVersion: "0.1.0",
+                    serverName: "Test Server",
+                  },
+                  { sessionId: "ses_perm_test" }
+                )
+              )
+            );
+
+            // Server initiates perm.request
+            setTimeout(() => {
+              ws.send(
+                serializeMessage(
+                  createPermRequestMessage({
+                    requestId: "req_test_1",
+                    toolName: "Bash",
+                    command: "git push -f",
+                    input: { command: "git push -f" },
+                    cwd: "/workspace/ShellMind",
+                    riskHint: "high",
+                    description: "Force pushing branch",
+                  })
+                )
+              );
+            }, 30);
+          } else if (parsed.data.type === "perm.response") {
+            receivedPermResponse = parsed.data as PermResponseMessage;
+          }
+        });
+      });
+
+      const client = new AgentClient({
+        webSocketFactory: (url) => new WsClient(url) as unknown as WebSocket,
+      });
+
+      let requestedPayload: PermRequestPayload | null = null;
+      client.onPermissionRequest((req) => {
+        requestedPayload = req;
+        // Respond with allow and remember
+        client.respondPermission(req.requestId, "allow", true);
+      });
+
+      client.connect({
+        deviceId: "dev_mobile",
+        token: "tok_mobile",
+        host: "127.0.0.1",
+        port: serverPort,
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 150));
+
+      expect(requestedPayload).not.toBeNull();
+      expect(requestedPayload!.requestId).toBe("req_test_1");
+      expect(requestedPayload!.toolName).toBe("Bash");
+      expect(requestedPayload!.command).toBe("git push -f");
+      expect(requestedPayload!.riskHint).toBe("high");
+
+      expect(receivedPermResponse).not.toBeNull();
+      expect(receivedPermResponse!.payload.requestId).toBe("req_test_1");
+      expect(receivedPermResponse!.payload.decision).toBe("allow");
+      expect(receivedPermResponse!.payload.rememberForSession).toBe(true);
+
+      client.disconnect();
+    });
+
+    it("sends perm.response deny when rejected", async () => {
+      let receivedPermResponse: PermResponseMessage | null = null;
+
+      wss.on("connection", (ws) => {
+        ws.on("message", (raw) => {
+          const parsed = parseMessage(raw.toString());
+          if (!parsed.success) return;
+
+          if (parsed.data.type === "hello") {
+            ws.send(
+              serializeMessage(
+                createHelloAckMessage(
+                  {
+                    sessionId: "ses_perm_test2",
+                    agentVersion: "0.1.0",
+                    serverName: "Test Server",
+                  },
+                  { sessionId: "ses_perm_test2" }
+                )
+              )
+            );
+
+            setTimeout(() => {
+              ws.send(
+                serializeMessage(
+                  createPermRequestMessage({
+                    requestId: "req_test_2",
+                    toolName: "Bash",
+                    command: "rm -rf /",
+                    input: { command: "rm -rf /" },
+                    cwd: "/",
+                    riskHint: "high",
+                  })
+                )
+              );
+            }, 30);
+          } else if (parsed.data.type === "perm.response") {
+            receivedPermResponse = parsed.data as PermResponseMessage;
+          }
+        });
+      });
+
+      const client = new AgentClient({
+        webSocketFactory: (url) => new WsClient(url) as unknown as WebSocket,
+      });
+
+      client.onPermissionRequest((req) => {
+        client.respondPermission(req.requestId, "deny", false);
+      });
+
+      client.connect({
+        deviceId: "dev_mobile",
+        token: "tok_mobile",
+        host: "127.0.0.1",
+        port: serverPort,
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 150));
+
+      expect(receivedPermResponse).not.toBeNull();
+      expect(receivedPermResponse!.payload.requestId).toBe("req_test_2");
+      expect(receivedPermResponse!.payload.decision).toBe("deny");
+
+      client.disconnect();
+    });
+
+    it("PermissionCard component renders element tree and exposes interaction props", () => {
+      const mockRespond = vi.fn();
+      const element = React.createElement(PermissionCard, {
+        request: {
+          requestId: "card_req_1",
+          toolName: "Bash",
+          command: "rm -rf /tmp/build",
+          input: { command: "rm -rf /tmp/build" },
+          cwd: "/workspace/ShellMind",
+          riskHint: "high",
+          description: "Clear build artifacts",
+        },
+        onRespond: mockRespond,
+      });
+
+      expect(element).toBeDefined();
+      expect(element.props.request.toolName).toBe("Bash");
+      expect(element.props.request.riskHint).toBe("high");
+      expect(element.props.onRespond).toBe(mockRespond);
     });
   });
 });

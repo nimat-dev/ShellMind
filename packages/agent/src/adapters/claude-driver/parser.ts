@@ -1,7 +1,23 @@
 import type { AgentStreamEvent } from "@shellmind/protocol";
 
+export interface ClaudeControlRequest {
+  requestId: string;
+  toolName: string;
+  input: Record<string, unknown>;
+  description?: string;
+}
+
+export interface ClaudeStreamParserOptions {
+  onControlRequest?: (req: ClaudeControlRequest) => void;
+}
+
 export class ClaudeStreamParser {
   private buffer = "";
+  private readonly onControlRequest?: (req: ClaudeControlRequest) => void;
+
+  constructor(options?: ClaudeStreamParserOptions) {
+    this.onControlRequest = options?.onControlRequest;
+  }
 
   /**
    * Feeds an incoming text chunk (from stdout) and returns any complete parsed events.
@@ -52,6 +68,24 @@ export class ClaudeStreamParser {
     }
 
     const emitted: AgentStreamEvent[] = [];
+
+    // 0. Intercept stdio permission control request
+    if (raw["type"] === "control_request") {
+      const req = raw["request"] as Record<string, unknown> | undefined;
+      if (req && req["subtype"] === "can_use_tool") {
+        const ctrlReq: ClaudeControlRequest = {
+          requestId: String(raw["request_id"] ?? ""),
+          toolName: String(req["tool_name"] ?? "unknown"),
+          input:
+            typeof req["input"] === "object" && req["input"] !== null
+              ? (req["input"] as Record<string, unknown>)
+              : {},
+          description: typeof req["description"] === "string" ? req["description"] : undefined,
+        };
+        this.onControlRequest?.(ctrlReq);
+      }
+      return null;
+    }
 
     // 1. Assistant message with content blocks (text or tool_use)
     if (

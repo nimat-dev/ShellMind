@@ -1,17 +1,21 @@
 import { spawn, type ChildProcess } from "node:child_process";
+import { classifyRisk, type PermissionDecision } from "@shellmind/protocol";
 import type { IClaudeDriver, ClaudeTurnOptions } from "../../core/claude.js";
-import { ClaudeStreamParser } from "./parser.js";
+import type { IPermissionBridge, PermissionRequest } from "../../core/permission.js";
+import { ClaudeStreamParser, type ClaudeControlRequest } from "./parser.js";
 
 export interface LocalClaudeDriverOptions {
   claudeBinary?: string;
   defaultCwd?: string;
   spawnFn?: typeof spawn;
+  permissionBridge?: IPermissionBridge;
 }
 
 export class LocalClaudeDriver implements IClaudeDriver {
   private readonly claudeBinary: string;
   private readonly defaultCwd: string;
   private readonly spawnFn: typeof spawn;
+  private readonly permissionBridge?: IPermissionBridge;
 
   private currentChild: ChildProcess | null = null;
   private isAborting = false;
@@ -21,6 +25,7 @@ export class LocalClaudeDriver implements IClaudeDriver {
     this.claudeBinary = options.claudeBinary ?? "claude";
     this.defaultCwd = options.defaultCwd ?? process.cwd();
     this.spawnFn = options.spawnFn ?? spawn;
+    this.permissionBridge = options.permissionBridge;
   }
 
   public isBusy(): boolean {
@@ -83,19 +88,85 @@ export class LocalClaudeDriver implements IClaudeDriver {
     }
 
     const targetCwd = options.cwd || this.defaultCwd;
-    const parser = new ClaudeStreamParser();
+    const permissionBridge = options.permissionBridge ?? this.permissionBridge;
     let hasEmittedTerminalEvent = false;
     let stderrOutput = "";
 
-    const args = ["-p", trimmedPrompt, "--output-format", "stream-json", "--verbose"];
+    const args = [
+      "-p",
+      trimmedPrompt,
+      "--output-format",
+      "stream-json",
+      "--input-format",
+      "stream-json",
+      "--verbose",
+      "--permission-prompt-tool",
+      "stdio",
+    ];
 
     return new Promise<void>((resolve) => {
       let child: ChildProcess;
+
+      const parser = new ClaudeStreamParser({
+        onControlRequest: async (ctrl: ClaudeControlRequest) => {
+          const rawCmd =
+            typeof ctrl.input["command"] === "string" ? ctrl.input["command"] : undefined;
+          const { riskHint } = classifyRisk(ctrl.toolName, ctrl.input);
+
+          const permReq: PermissionRequest = {
+            requestId: ctrl.requestId,
+            toolName: ctrl.toolName,
+            command: rawCmd,
+            input: ctrl.input,
+            cwd: targetCwd,
+            riskHint,
+            description: ctrl.description,
+          };
+
+          let decision: PermissionDecision = "allow";
+          if (permissionBridge) {
+            decision = await permissionBridge.requestPermission(permReq);
+          }
+
+          const controlResp =
+            decision === "allow"
+              ? {
+                  type: "control_response",
+                  response: {
+                    subtype: "success",
+                    request_id: ctrl.requestId,
+                    response: {
+                      behavior: "allow",
+                    },
+                  },
+                }
+              : {
+                  type: "control_response",
+                  response: {
+                    subtype: "success",
+                    request_id: ctrl.requestId,
+                    response: {
+                      behavior: "deny",
+                      message: "Permission denied",
+                    },
+                  },
+                };
+
+          try {
+            if (child && !child.killed && child.stdin && child.stdin.writable) {
+              child.stdin.write(JSON.stringify(controlResp) + "\n");
+            }
+          } catch {
+            // Process might have terminated
+          }
+        },
+      });
+
       try {
         child = this.spawnFn(this.claudeBinary, args, {
           cwd: targetCwd,
           env: { ...process.env },
-          stdio: ["ignore", "pipe", "pipe"],
+          stdio: ["pipe", "pipe", "pipe"],
         });
       } catch (err: unknown) {
         options.onEvent({

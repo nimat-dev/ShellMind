@@ -23,27 +23,27 @@ phone. **Gated on Phase 00** — if the spike disproved the thesis, re-plan befo
 - [x] Verification: full verify green, no regressions.
 
 ## F008 — Permission bridge + confirm UI + allowlist + audit log
-**Status**: NOT STARTED — the crown jewel; heaviest edge-case battery.
+**Status**: COMPLETE (PR #9 pending)
 
 ### Acceptance criteria
-- [ ] Claude Code's permission prompt (mechanism chosen in F000) is intercepted and routed as a
+- [x] Claude Code's permission prompt (mechanism chosen in F000) is intercepted and routed as a
       `perm.request` → phone **allow/deny card** showing the command/tool, cwd, and the pure
       `RiskHint` from `protocol`; `perm.response` releases or skips it.
-- [ ] Deny-by-default for writes/exec; a configurable **allowlist** auto-allows read-only commands;
+- [x] Deny-by-default for writes/exec; a configurable **allowlist** auto-allows read-only commands;
       destructive patterns get extra friction (explicit confirm). The hint is a UX signal — the
       human decision is the gate (`PRODUCT.md`/`layer-boundaries.md`).
-- [ ] **Append-only audit log** on the agent: every executed/approved tool call recorded with
+- [x] **Append-only audit log** on the agent: every executed/approved tool call recorded with
       decision + result, **written before** a dangerous command runs.
-- [ ] Edge/error cases (`edge-cases.md`, exhaustively): obfuscated/chained commands
+- [x] Edge/error cases (`edge-cases.md`, exhaustively): obfuscated/chained commands
       (`a && rm -rf`, `$(…)`, aliases) still gated by the human (classifier never trusted as the
       gate); prompt times out → treated as deny; phone disconnects mid-prompt → deny + abort;
       double-tap allow is idempotent; "remember for session" scoped to the session only; revoked
       device mid-session → all pending prompts denied; audit log never silently truncated.
-- [ ] E2E (Maestro): a write/exec turn pauses → approve → runs + audited; another → deny → skipped
+- [x] E2E (Maestro): a write/exec turn pauses → approve → runs + audited; another → deny → skipped
       + audited; an allowlisted read auto-runs. Trace under `.harness/evidence/F008/`.
-- [ ] Boundary invariants: permission *rules* pure in `protocol`; I/O (audit file, transport) in
+- [x] Boundary invariants: permission *rules* pure in `protocol`; I/O (audit file, transport) in
       adapters; `check-architecture` passes.
-- [ ] Verification: full verify + e2e green, no regressions.
+- [x] Verification: full verify + e2e green, no regressions.
 
 ## F009 — Chat UI + session continuity + project picker
 **Status**: NOT STARTED
