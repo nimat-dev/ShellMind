@@ -1,0 +1,31 @@
+appId: com.shellmind.app
+---
+# ShellMind Mobile Terminal E2E Flow (F005)
+- launchApp
+- assertVisible: "ShellMind Terminal"
+- assertVisible: "Connected"
+
+# 1. Type pwd and run
+- tapOn: "Enter shell command..."
+- inputText: "pwd"
+- tapOn: "↵"
+- assertVisible: "/"
+
+# 2. Type ls and run
+- tapOn: "Enter shell command..."
+- inputText: "ls"
+- tapOn: "↵"
+
+# 3. Recall command from history via accessory key
+- tapOn: "↑"
+- assertVisible: "ls"
+
+# 4. Tap Hist accessory button and inspect history modal
+- tapOn: "Hist"
+- assertVisible: "Command History"
+- tapOn: "Close"
+
+# 5. Rotate device to test resize handling
+- setOrientation: LANDSCAPE
+- assertVisible: "ShellMind Terminal"
+- setOrientation: PORTRAIT

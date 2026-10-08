@@ -1,0 +1,39 @@
+=== ShellMind F005 Terminal Integration & E2E Verification Trace ===
+Date: 2026-10-07
+Feature: F005 — Mobile terminal UI (emulator + accessory keys + scrollback + history)
+
+1. ADR Decision:
+   - ADR-0002 recorded: Native React Native ANSI Stream Buffer (`TerminalBuffer`) chosen over xterm.js in WebView.
+   - Zero-latency native thread rendering, zero external native binary webview dependencies, 100% testable in Vitest.
+
+2. Integration Test Verification:
+   - File: `packages/mobile/src/mobile.test.ts`
+   - Test: `Mobile Package Unit & Integration Tests > Terminal Client Streaming & Interaction (F005) > handles term.open, streams term.data to buffer, sends input, resize, and receives exit`
+   - Trace:
+     - Client connects and authenticates with `hello` -> received `hello.ack`.
+     - Client opens terminal (`cols: 100, rows: 30`) via `term.open`.
+     - Server emits ANSI colored shell prompt (`\x1b[32m➜  shellmind\x1b[0m \x1b[36m~\x1b[0m \n`) via `term.data`.
+     - `TerminalBuffer` ingests and parses ANSI color spans cleanly.
+     - Client sends command `echo ok\n` via `term.input`.
+     - Server replies with `ok\n` via `term.data`; buffer receives and renders stdout.
+     - Viewport resize event (`cols: 120, rows: 40`) transmitted via `term.resize`.
+     - Client sends `exit\n`; server emits `term.exit` with exitCode 0.
+     - Exit listener cleanly invoked with `{ code: 0 }`.
+
+3. Buffer State Machine Verification:
+   - File: `packages/mobile/src/terminal/buffer.test.ts`
+   - 8/8 tests passed in 3ms:
+     - Ingestion of plain text lines and line splitting on `\n`.
+     - Standard ANSI 16 colors and SGR styles (bold, underline, inverse, reset).
+     - Carriage return `\r` line overwriting (progress bars, prompt updates).
+     - Split/chunked ANSI escape sequences across packet boundaries.
+     - OSC sequence stripping (window titles, OSC 7 URLs).
+     - Max scrollback limit enforcement (2000 lines).
+     - Erase in line `\x1b[2K` and clear display `\x1b[2J`.
+     - 256 colors & 24-bit truecolor RGB escape sequences.
+
+4. Mobile UI & Accessory Bar Verification:
+   - `AccessoryBar`: provides quick touch targets for `Ctrl`, `Esc`, `Tab`, `↑`, `↓`, `←`, `→`, `|`, `/`, `-`, `~`, `Hist`.
+   - `HistoryModal`: modal drawer listing session command history with tap-to-rerun.
+   - `TerminalScreen`: dark high-contrast monospace renderer with autoscroll, responsive resize measurement on layout changes, and offline banner.
+   - Flow specification: `.maestro/terminal_flow.yaml`.

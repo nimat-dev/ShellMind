@@ -6,12 +6,16 @@ import {
   createHelloAckMessage,
   createHelloRejectMessage,
   createPongMessage,
+  createTermDataMessage,
+  createTermExitMessage,
   type HelloMessage,
   type PingMessage,
+  type TermInputMessage,
 } from "@shellmind/protocol";
 import { parsePairingPayload } from "./pairing.js";
 import { MemorySecureStorage, ExpoSecureStoreAdapter } from "./storage.js";
 import { AgentClient } from "./client.js";
+import { TerminalBuffer } from "./terminal/buffer.js";
 
 describe("Mobile Package Unit & Integration Tests", () => {
   describe("Pairing Payload Parser & Validator", () => {
@@ -291,6 +295,129 @@ describe("Mobile Package Unit & Integration Tests", () => {
       const state = client.getState();
       expect(state.status).toBe("error");
       expect(state.errorMessage).toMatch(/failed/i);
+    });
+  });
+
+  describe("Terminal Client Streaming & Interaction (F005)", () => {
+    let wss: WebSocketServer;
+    let serverPort: number;
+
+    beforeEach(async () => {
+      wss = new WebSocketServer({ port: 0, host: "127.0.0.1" });
+      await new Promise<void>((resolve) => wss.on("listening", () => resolve()));
+      const addr = wss.address();
+      serverPort = typeof addr === "object" && addr !== null ? addr.port : 0;
+    });
+
+    afterEach(async () => {
+      await new Promise<void>((resolve) => {
+        wss.close(() => resolve());
+      });
+    });
+
+    it("handles term.open, streams term.data to buffer, sends input, resize, and receives exit", async () => {
+      const receivedMessages: string[] = [];
+
+      wss.on("connection", (ws) => {
+        ws.on("message", (data) => {
+          const raw = data.toString("utf-8");
+          receivedMessages.push(raw);
+          const parsed = parseMessage(raw);
+          if (!parsed.success) return;
+
+          if (parsed.data.type === "hello") {
+            const ack = createHelloAckMessage(
+              {
+                sessionId: "ses_term_123",
+                agentVersion: "0.1.0",
+                serverName: "MacBook Pro",
+              },
+              { sessionId: "ses_term_123" }
+            );
+            ws.send(serializeMessage(ack));
+          } else if (parsed.data.type === "term.open") {
+            // Emulate agent sending initial shell prompt
+            const banner = createTermDataMessage(
+              { data: "\x1b[32m➜  shellmind\x1b[0m \x1b[36m~\x1b[0m \n" },
+              { sessionId: "ses_term_123" }
+            );
+            ws.send(serializeMessage(banner));
+          } else if (parsed.data.type === "term.input") {
+            const input = parsed.data as TermInputMessage;
+            if (input.payload.data === "echo ok\n") {
+              const echoResp = createTermDataMessage(
+                { data: "ok\n" },
+                { sessionId: "ses_term_123" }
+              );
+              ws.send(serializeMessage(echoResp));
+            } else if (input.payload.data === "exit\n") {
+              const exitMsg = createTermExitMessage(
+                { exitCode: 0 },
+                { sessionId: "ses_term_123" }
+              );
+              ws.send(serializeMessage(exitMsg));
+            }
+          }
+        });
+      });
+
+      const client = new AgentClient({
+        webSocketFactory: (url) => new WsClient(url) as unknown as WebSocket,
+      });
+
+      const buffer = new TerminalBuffer();
+      const outputChunks: string[] = [];
+      let exitResult: { code: number; signal?: number } | null = null;
+
+      client.onTerminalData((chunk) => {
+        outputChunks.push(chunk);
+        buffer.write(chunk);
+      });
+
+      client.onTerminalExit((exitCode, signal) => {
+        exitResult = { code: exitCode, signal };
+      });
+
+      // 1. Connect
+      client.connect({
+        deviceId: "dev_mobile",
+        token: "tok_mobile",
+        host: "127.0.0.1",
+        port: serverPort,
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      expect(client.getState().status).toBe("online");
+
+      // 2. Open terminal
+      client.openTerminal({ cols: 100, rows: 30 });
+      await new Promise((resolve) => setTimeout(resolve, 80));
+
+      expect(outputChunks.length).toBeGreaterThanOrEqual(1);
+      expect(buffer.getPlainText()).toContain("➜  shellmind");
+
+      // 3. Send command input
+      client.sendTerminalInput("echo ok\n");
+      await new Promise((resolve) => setTimeout(resolve, 80));
+
+      expect(buffer.getPlainText()).toContain("ok");
+
+      // 4. Resize terminal
+      client.resizeTerminal(120, 40);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      const hasResizeMsg = receivedMessages.some((m) => {
+        const parsed = parseMessage(m);
+        return parsed.success && parsed.data.type === "term.resize";
+      });
+      expect(hasResizeMsg).toBe(true);
+
+      // 5. Send exit
+      client.sendTerminalInput("exit\n");
+      await new Promise((resolve) => setTimeout(resolve, 80));
+
+      expect(exitResult).toEqual({ code: 0, signal: undefined });
+      client.disconnect();
     });
   });
 });

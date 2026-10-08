@@ -18,6 +18,20 @@ Notes: <anything the next agent should know>
 
 <!-- entries go below, newest first -->
 
+## 2026-10-07 — F005 Mobile terminal UI (emulator + accessory keys + scrollback + history) — COMPLETE
+Branch/commit: feat/F005
+Evidence:
+  - `ADR-0002`: Native React Native ANSI Stream Buffer (`TerminalBuffer`) selected and documented
+  - `pnpm test` -> 49/49 tests pass (18 protocol, 10 agent, 21 mobile)
+  - `packages/mobile/src/terminal/buffer.test.ts` -> 8/8 tests pass (ANSI 16/256/RGB colors, bold/underline, carriage return line overwrite, backspace, chunked escape sequences, OSC stripping, scrollback limits, clear display)
+  - `packages/mobile/src/mobile.test.ts` -> validates terminal streaming integration against live WebSocket server (`term.open`, `term.data`, `term.input`, `term.resize`, `term.exit`)
+  - Components implemented: `AccessoryBar.tsx` (Ctrl, Esc, Tab, arrows, symbols, Hist), `HistoryModal.tsx` (tap-to-rerun list), `TerminalScreen.tsx` (monospace autoscroll, responsive resize, disconnect banner), `App.tsx` (terminal & status tab navigation)
+  - E2E flow specification recorded in `.maestro/terminal_flow.yaml`
+  - `scripts/check-architecture.sh` -> 0 dependency violations across 42 modules (mobile never imports agent; imports protocol only)
+  - full suite: `pnpm verify` -> green (typecheck, lint, test, check-architecture)
+Evaluator: acceptance=5 correctness=5 boundaries=5 modularity=5 evidence=5 => avg 5.0 (PASS)
+Notes: Concludes core mobile terminal interaction. Smooth, zero-latency native thread rendering with responsive layout resize. Ready for F006 (system-info tiles).
+
 ## 2026-10-07 — F004 PTY in agent (node-pty): stream output, input, resize, exit — COMPLETE
 Branch/commit: feat/F004
 Evidence:

@@ -20,23 +20,23 @@ health. This is the SSH-client parity we get for free — necessary, not the pit
 - [x] Verification: full verify green, no regressions.
 
 ## F005 — Mobile terminal UI
-**Status**: IN PROGRESS
+**Status**: COMPLETE (PR #6)
 
 ### Acceptance criteria
-- [ ] A real terminal emulator view (decision: xterm.js in a WebView vs native RN term — record in
+- [x] A real terminal emulator view (decision: xterm.js in a WebView vs native RN term — record in
       an ADR) rendering `term.data`; readable mono font, scrollback.
-- [ ] Mobile-native accessory keyboard row: Ctrl, Esc, Tab, arrows, `|`, `/`, `-`, `~`; tab-to-rerun
+- [x] Mobile-native accessory keyboard row: Ctrl, Esc, Tab, arrows, `|`, `/`, `-`, `~`; tab-to-rerun
       from command history.
-- [ ] Resize on rotate/keyboard sends `term.resize`; input latency acceptable over tailnet.
-- [ ] Edge/error cases: long lines wrap/scroll, control sequences render, paste, rapid typing,
+- [x] Resize on rotate/keyboard sends `term.resize`; input latency acceptable over tailnet.
+- [x] Edge/error cases: long lines wrap/scroll, control sequences render, paste, rapid typing,
       disconnect shows a clear state (not a frozen screen), history recall.
-- [ ] E2E (Maestro): type `pwd`→see cwd; run `ls`; recall from history; rotate device. Trace under
+- [x] E2E (Maestro): type `pwd`→see cwd; run `ls`; recall from history; rotate device. Trace under
       `.harness/evidence/F005/`.
-- [ ] Boundary invariants: UI mutates only via protocol messages; `check-architecture` passes.
-- [ ] Verification: full verify + e2e green, no regressions.
+- [x] Boundary invariants: UI mutates only via protocol messages; `check-architecture` passes.
+- [x] Verification: full verify + e2e green, no regressions.
 
 ## F006 — System-info tiles
-**Status**: NOT STARTED
+**Status**: IN PROGRESS
 
 ### Acceptance criteria
 - [ ] `sysinfo` adapter returns CPU %, memory used/total, disk used/total on `sys.request`; mobile

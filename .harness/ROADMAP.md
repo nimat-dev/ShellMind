@@ -16,8 +16,8 @@ Keep exactly one feature `IN PROGRESS`. Full acceptance criteria live in each `p
 
 ## Phase 02 — Terminal & telemetry
 - [x] **F004** — PTY in agent (node-pty): stream output, input, resize, exit — `COMPLETE`
-- [ ] **F005** — mobile terminal UI (emulator + accessory keys + scrollback + history) — `IN PROGRESS`
-- [ ] **F006** — system-info tiles (CPU / memory / disk) — `NOT STARTED`
+- [x] **F005** — mobile terminal UI (emulator + accessory keys + scrollback + history) — `COMPLETE`
+- [ ] **F006** — system-info tiles (CPU / memory / disk) — `IN PROGRESS`
 
 ## Phase 03 — AI (Claude Code bridge)
 - [ ] **F007** — Claude driver: spawn `claude -p` stream-json, parse → protocol, switchable project cwd — `NOT STARTED`

@@ -1,21 +1,24 @@
 # CURRENT TASK
 
-**Feature**: F005 — mobile terminal UI (emulator + accessory keys + scrollback + history)
+**Feature**: F006 — system-info tiles (CPU / memory / disk)
 **Phase**: Phase 02 — Terminal & telemetry
 **Status**: IN PROGRESS
 
 ## Exact next step
-1. In `packages/mobile`:
-   - Decision record: xterm.js in WebView vs Native RN terminal component (ADR).
-   - Implement terminal emulator screen integrating `term.open`, `term.data`, `term.input`, `term.resize`, `term.exit`.
-   - Implement mobile-native accessory keyboard row (Ctrl, Esc, Tab, Arrows, `|`, `/`, `-`, `~`).
-   - Support command history recall and tap-to-rerun.
-   - Dynamic viewport resize calculation on orientation change / on-screen keyboard toggle.
-2. Integration / unit tests for terminal screen state machine, input handling, and ANSI stream buffering.
-3. Verify clean architecture (`pnpm check-architecture`) and full verify (`pnpm verify`).
+1. In `packages/protocol`:
+   - Wire messages: `sys.request`, `sys.metrics`.
+   - Metrics payload schema: CPU %, memory (used/total), disk (used/total), uptime.
+   - Register in `MessageRegistry` and codec.
+2. In `packages/agent`:
+   - Implement `sysinfo` adapter (`os` builtins / systeminfo) in `adapters/sysinfo/`.
+   - Wire message handler into `AgentDaemon`.
+3. In `packages/mobile`:
+   - Telemetry client polling and auto-refresh on interval when visible.
+   - React Native metrics tiles component (CPU, RAM, Disk).
+4. Unit and integration tests, verify architecture (`pnpm check-architecture`), and full verify (`pnpm verify`).
 
 ## Acceptance (summary)
 See `phases/PHASE-02-TERMINAL.md` for full criteria.
 
 ## Definition of done
-Mobile terminal UI connects to agent PTY session, renders ANSI colors/output smoothly, receives input via virtual keyboard and accessory keys, resizes appropriately, and passes full verification with no regressions.
+Agent gathers real-time CPU/mem/disk metrics without blocking event loop; mobile renders clean metrics tiles with auto-refresh; 100% tests green, clean boundaries.

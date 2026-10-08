@@ -1,11 +1,16 @@
 import {
   createHelloMessage,
   createPingMessage,
+  createTermOpenMessage,
+  createTermInputMessage,
+  createTermResizeMessage,
   parseMessage,
   serializeMessage,
   type HelloAckMessage,
   type HelloRejectMessage,
   type PongMessage,
+  type TermDataMessage,
+  type TermExitMessage,
 } from "@shellmind/protocol";
 import type { PairingConfig } from "./pairing.js";
 
@@ -38,6 +43,8 @@ export class AgentClient {
   private pingTimer: ReturnType<typeof setInterval> | null = null;
   private pendingPingTimestamp: number | null = null;
   private listeners: Set<StateChangeListener> = new Set();
+  private terminalDataListeners: Set<(data: string) => void> = new Set();
+  private terminalExitListeners: Set<(exitCode: number, signal?: number) => void> = new Set();
 
   private state: ClientState = {
     status: "disconnected",
@@ -60,6 +67,51 @@ export class AgentClient {
     return () => {
       this.listeners.delete(listener);
     };
+  }
+
+  public onTerminalData(listener: (data: string) => void): () => void {
+    this.terminalDataListeners.add(listener);
+    return () => {
+      this.terminalDataListeners.delete(listener);
+    };
+  }
+
+  public onTerminalExit(listener: (exitCode: number, signal?: number) => void): () => void {
+    this.terminalExitListeners.add(listener);
+    return () => {
+      this.terminalExitListeners.delete(listener);
+    };
+  }
+
+  public openTerminal(options?: { cols?: number; rows?: number; cwd?: string }): void {
+    if (!this.socket || this.state.status !== "online") return;
+    const msg = createTermOpenMessage(
+      {
+        cols: options?.cols ?? 80,
+        rows: options?.rows ?? 24,
+        cwd: options?.cwd,
+      },
+      { sessionId: this.state.sessionId ?? undefined }
+    );
+    this.socket.send(serializeMessage(msg));
+  }
+
+  public sendTerminalInput(data: string): void {
+    if (!this.socket || this.state.status !== "online") return;
+    const msg = createTermInputMessage(
+      { data },
+      { sessionId: this.state.sessionId ?? undefined }
+    );
+    this.socket.send(serializeMessage(msg));
+  }
+
+  public resizeTerminal(cols: number, rows: number): void {
+    if (!this.socket || this.state.status !== "online") return;
+    const msg = createTermResizeMessage(
+      { cols, rows },
+      { sessionId: this.state.sessionId ?? undefined }
+    );
+    this.socket.send(serializeMessage(msg));
   }
 
   private updateState(partial: Partial<ClientState>): void {
@@ -215,6 +267,22 @@ export class AgentClient {
         // Fallback compute from payload
         const rtt = Math.max(0, Date.now() - pong.payload.receivedAt);
         this.updateState({ lastRttMs: rtt });
+      }
+      return;
+    }
+
+    if (message.type === "term.data") {
+      const termData = message as TermDataMessage;
+      for (const listener of this.terminalDataListeners) {
+        listener(termData.payload.data);
+      }
+      return;
+    }
+
+    if (message.type === "term.exit") {
+      const termExit = message as TermExitMessage;
+      for (const listener of this.terminalExitListeners) {
+        listener(termExit.payload.exitCode, termExit.payload.signal);
       }
       return;
     }
