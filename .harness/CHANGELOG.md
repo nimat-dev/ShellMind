@@ -18,6 +18,20 @@ Notes: <anything the next agent should know>
 
 <!-- entries go below, newest first -->
 
+## 2026-10-07 — F003 Mobile skeleton + QR pairing + connect + status — COMPLETE
+Branch/commit: feat/F003
+Evidence:
+  - `pnpm test` -> 37/37 tests pass (17 protocol, 8 agent, 12 mobile)
+  - `packages/mobile/src/mobile.test.ts` -> validates pairing payload validator (`parsePairingPayload`), `MemorySecureStorage`, `ExpoSecureStoreAdapter`, and `AgentClient` socket lifecycle against live WebSocket server
+  - `AgentClient` -> executes `hello` handshake, transitions to `Online`, captures session ID and server name, computes ping RTT latency
+  - `StatusScreen` & `PairingScreen` -> renders Online/Offline/Connecting/Error states, latency badge, server metadata, and unpair workflow
+  - Edge cases covered: invalid JSON payload, missing `dev_` or `tok_` prefixes, invalid port, `hello.reject` with `FORBIDDEN` or `REVOKED`, offline/unreachable agent host, unpairing cleanup
+  - `scripts/check-architecture.sh` -> 0 dependency violations across 33 modules (mobile never imports agent; imports protocol only)
+  - full suite: `pnpm verify` -> green (typecheck, lint, test, check-architecture)
+  - e2e: integration test against live WebSocket test server (`mobile.test.ts`) verifies full pairing and socket lifecycle
+Evaluator: acceptance=5 correctness=5 boundaries=5 modularity=5 evidence=5 => avg 5.0 (PASS)
+Notes: Concludes Phase 01 (Foundation). The entire phone⇄agent pipe is proven, authenticated, encrypted over tailnet, with round-trip latency verified. Ready for Phase 02 (Terminal & telemetry).
+
 ## 2026-10-07 — F002 Agent daemon + tailnet transport + device-token auth — COMPLETE
 Branch/commit: feat/F002
 Evidence:

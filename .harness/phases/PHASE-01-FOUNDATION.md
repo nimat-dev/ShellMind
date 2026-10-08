@@ -41,21 +41,21 @@ Online, with a round-trip. No terminal/AI yet. Build the plumbing before the pol
 - [x] Verification: full verify green, no regressions.
 
 ## F003 — Mobile skeleton + QR pairing + connect + status
-**Status**: NOT STARTED
+**Status**: COMPLETE
 
 ### Acceptance criteria
-- [ ] Expo app (dev client) with a pairing screen that **scans the QR** printed by `shellmind
+- [x] Expo app (dev client) with a pairing screen that **scans the QR** printed by `shellmind
       pair` (tailnet host + one-time token + pubkey fingerprint); token stored in secure storage
       (`expo-secure-store`), never in plaintext/source.
-- [ ] After pairing, the app connects and shows **Online / Offline**, with ping RTT.
-- [ ] Edge/error cases: wrong/expired token → clear error (not a crash); agent offline → Offline
+- [x] After pairing, the app connects and shows **Online / Offline**, with ping RTT.
+- [x] Edge/error cases: wrong/expired token → clear error (not a crash); agent offline → Offline
       state + retry; airplane mode / no tailnet → actionable message; app backgrounded→foregrounded
       reconnects.
-- [ ] E2E (Maestro): against a running agent — scan a test pairing payload → Online; bad token →
+- [x] E2E (Maestro): against a running agent — scan a test pairing payload → Online; bad token →
       error; kill agent → Offline. Trace saved under `.harness/evidence/F003/`.
-- [ ] Boundary invariants: mobile talks to the agent only via `@shellmind/protocol`;
+- [x] Boundary invariants: mobile talks to the agent only via `@shellmind/protocol`;
       `check-architecture` passes.
-- [ ] Verification: full verify + e2e green, no regressions.
+- [x] Verification: full verify + e2e green, no regressions.
 
 ## Phase completion criteria
 A phone pairs over the tailnet and shows Online with a round-trip; bad/revoked tokens are
