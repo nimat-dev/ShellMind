@@ -3,31 +3,29 @@
 > Read this first, every session. Rewrite it for a cold reader before you stop.
 
 ## Where we are
-- **Phase**: Phase 00 — De-risk (COMPLETE) -> entering Phase 01 — Foundation
-- **Active feature**: F000 — Claude Code headless spike (COMPLETE); next: F001 — Monorepo + protocol core
-- **Overall progress**: 1 / 12 features COMPLETE (8%)
+- **Phase**: Phase 01 — Foundation (prove the pipe)
+- **Active feature**: F002 — Agent daemon + tailnet transport + device-token auth (IN PROGRESS)
+- **Overall progress**: 2 / 12 features COMPLETE (16%)
 
 ## Last verified
 - **Date**: 2026-10-07
-- **F000 De-risk Verification**:
-  - `claude -p` runs on user's subscription without `ANTHROPIC_API_KEY` (raw log in `.harness/evidence/F000-subscription-say-hi-raw.jsonl`).
-  - `--verbose` discovered as mandatory flag when `--output-format=stream-json` is passed with `-p`.
-  - Rate limit telemetry events (`rate_limit_event`) emitted with 5h/7d window utilization and `resetsAt`.
-  - Programmatic permission prompt interception proven via internal MCP server (`--permission-prompt-tool mcp__perm_server__permission_prompt`).
-  - Allow path verified: executes command, creates output file (`.harness/evidence/F000-allow-run-raw.jsonl`).
-  - Deny path verified: blocks execution with reason, creates no output file (`.harness/evidence/F000-deny-run-raw.jsonl`).
-  - Stream parser implemented and verified (`spike/stream_parser.ts`, parsed transcripts in `.harness/evidence/F000-*-parsed.json`).
-  - ADR-0001 documented and indexed in `DECISIONS.md`.
-- **Git**: branch `feat/F000`
+- **F001 Verification**:
+  - Monorepo configured with pnpm workspaces (`packages/protocol`, `packages/agent`, `packages/mobile`).
+  - Strict TypeScript configuration across all packages (`tsconfig.base.json`, `tsc -b` clean).
+  - `@shellmind/protocol` implemented: pure envelope, Zod schemas (`ping`, `pong`, `error`), registry pattern, codec with size limits and typed errors.
+  - 15/15 unit tests passing (`packages/protocol/src/protocol.test.ts`).
+  - `scripts/init.sh` and `scripts/check-architecture.sh` running cleanly.
+  - Dependency-cruiser rules actively enforced; seeded violation caught and verified.
+  - CI workflow (`.github/workflows/ci.yml`) added.
+- **Git**: branch `feat/F001`
 
 ## Next step
-Start F001: scaffold pnpm workspace (`packages/protocol`, `packages/agent`, `packages/mobile`), pure protocol envelope + zod schemas (`ping`/`pong`/`error`), dependency-cruiser boundary checks, and CI workflow.
+Implement F002: Agent daemon core transport interface + tailnet transport adapter, device-token authentication handshake, and secure hashed device registry.
 
 ## Open blockers
-See `BLOCKERS.md`. None open. Core assumption de-risked and confirmed.
+See `BLOCKERS.md`. None open.
 
 ## Notes for the next agent
-- ShellMind core thesis is verified: headless Claude Code CLI on user's subscription with programmatic MCP permission prompt routing works reliably.
-- Always include `--verbose` when using `--output-format=stream-json` with `-p`.
-- When using `--permission-prompt-tool`, remember that Claude prefixes MCP tools with `mcp__<server_name>__<tool_name>`.
-- F001 creates the real monorepo.
+- Pure core rule: `packages/protocol` must not import Node builtins or I/O.
+- Agent rule: `packages/agent/src/core` must not import Node builtins or I/O; concrete socket/file I/O belongs in `packages/agent/src/adapters`.
+- Run `./scripts/init.sh` at the start of any session.

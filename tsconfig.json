@@ -1,0 +1,8 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./packages/protocol" },
+    { "path": "./packages/agent" },
+    { "path": "./packages/mobile" }
+  ]
+}
