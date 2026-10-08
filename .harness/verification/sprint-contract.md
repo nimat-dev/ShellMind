@@ -1,50 +1,54 @@
-# Sprint Contract — F002: Agent daemon + tailnet transport + device-token auth
+# Sprint Contract — F003: Mobile skeleton + QR pairing + connect + status
 
-Feature: F002 — Agent daemon + tailnet transport + device-token auth
+Feature: F003 — Mobile skeleton + QR pairing + connect + status
 Phase: Phase 01 — Foundation (prove the pipe)
 Date: 2026-10-07
 
 ## 1. Scope & Acceptance Criteria
-- [x] `shellmind` daemon binds a transport server on the **tailnet interface only** (not `0.0.0.0`); refuses to start if no tailnet interface is found (clear, actionable error).
-- [x] `Transport` interface defined in agent core with a `tailnet` adapter registered (per `MODULES.md`); core never imports the concrete adapter directly.
-- [x] Device-token handshake: a connection with a valid paired token → `hello.ack` + `pong` on `ping`; **missing/invalid/revoked token → `hello.reject`, connection closed**, logged without leaking secrets.
-- [x] Local device registry persists paired devices (SHA-256 hashed token, mode 0600 file); `shellmind devices` lists + revokes.
-- [x] Wire messages in `@shellmind/protocol`: `hello`, `hello.ack`, `hello.reject` schemas added and registered.
-- [x] Edge/error cases from §2 covered: no token, wrong token, revoked device, malformed handshake, duplicate pairing, token literal never logged.
-- [x] E2E: N/A at mobile level (covered by F003); agent-side integration tests drive a real socket.
-- [x] Boundary invariants: `check-architecture` passes (I/O strictly in `src/adapters/**`, `src/core` has no I/O).
-- [x] Verification: full verify (`pnpm verify`) green, no regressions.
+- [x] Expo mobile client skeleton configured with TypeScript strict mode in `packages/mobile`.
+- [x] Secure storage abstraction (`ISecureStorage`) with `ExpoSecureStoreAdapter` for native runtime and test fallback. Device token stored securely, never in plaintext source.
+- [x] Pairing model & screen: parses pairing payload (`{ host, port, deviceId, token }`) from QR code scan or manual input.
+- [x] Connection client (`AgentClient`):
+  - Connects to agent daemon over WebSocket (`ws://<host>:<port>`).
+  - Initiates `hello` handshake frame using `@shellmind/protocol`.
+  - Transitions to `Online` upon `hello.ack`; captures `sessionId` and `serverName`.
+  - Computes and tracks ping RTT round-trip latency (`rttMs`).
+  - Transitions to `Offline` on connection loss; gracefully attempts reconnection.
+  - Captures `hello.reject` with actionable error messages (`FORBIDDEN`, `REVOKED`, `UNAUTHORIZED`).
+- [x] Status UI (`App` / `StatusScreen`): displays Online/Offline badge, RTT latency, host, session details, and unpair option.
+- [x] Edge/error cases from §2 covered: wrong token, agent offline, socket drops, unpair flow.
+- [x] Boundary invariants: mobile imports `@shellmind/protocol` only, never `packages/agent`; `check-architecture` passes.
+- [x] Verification: full verify (`pnpm verify`) passes cleanly.
 
 ## 2. Edge cases & failure paths (from `verification/edge-cases.md`)
-- Tailscale not running / no tailnet interface found -> Refuses to start, emits descriptive exit error explaining tailnet interface is missing.
-- Missing authentication token in hello handshake -> Returns `hello.reject` with `UNAUTHORIZED`, closes connection.
-- Invalid token hash mismatch -> Returns `hello.reject` with `FORBIDDEN`, closes connection.
-- Revoked device -> Device exists in registry but `revokedAt` is set; returns `hello.reject` with `REVOKED`, refuses connection.
-- Malformed handshake message (not valid `hello` frame) -> Returns `hello.reject` with `MALFORMED_HANDSHAKE`, terminates connection.
-- Token secrecy: raw token literals must never be saved to disk or logged to stdout/stderr (stored as SHA-256 hash).
-- File permissions: device registry file is written with strict 0600 (owner read/write only) permissions.
+- Wrong or expired token -> `hello.reject` received, mobile displays clear error message ("Pairing rejected: Invalid credentials"), does not crash.
+- Agent offline / unreachable host -> Socket emits error / close, client transitions to `Offline` state with retry button.
+- Malformed pairing JSON -> Parsing validator flags error before attempting connection.
+- Sudden disconnect / agent restarted -> Socket close event transitions client to `Offline`, resumes reconnection loop.
+- Unpairing -> Clears secure storage token, cleans up active socket, resets state back to Pairing screen.
 
 ## 3. E2E scenario(s)
-N/A at mobile level. Agent-side integration tests drive a real network socket over localhost/tailnet test harness.
+Integration tests in `packages/mobile/src/mobile.test.ts` drive end-to-end socket interaction against a WebSocket transport server:
+1. Valid pairing payload -> connects -> `hello.ack` -> reports `Online` with ping RTT.
+2. Invalid token -> connects -> `hello.reject` -> reports `Error: FORBIDDEN`.
+3. Agent server stops -> reports `Offline`, unpair resets state to clean pairing view.
 
 ## 4. Plan (thinnest vertical slice)
-1. Add `hello`, `hello.ack`, `hello.reject` schemas to `@shellmind/protocol`.
-2. Define `Transport`, `TransportConnection`, and `TransportListener` interfaces in `packages/agent/src/core/transport.ts`.
-3. Implement `DeviceRegistry` adapter (`packages/agent/src/adapters/storage/device-registry.ts`) with SHA-256 hashing and 0600 file mode.
-4. Implement tailnet interface detection and WebSocket/TCP server adapter in `packages/agent/src/adapters/transport/tailnet.ts`.
-5. Implement daemon server core (`packages/agent/src/core/daemon.ts`) coordinating transport, handshake, and message dispatch.
-6. Implement CLI commands (`shellmind pair`, `shellmind devices`, `shellmind dev`, `shellmind start/stop/status`) in `packages/agent/src/cli.ts`.
-7. Write unit and integration tests covering valid handshake, bad token, revoked device, malformed handshake, and secret leak checks.
-8. Verify layer boundaries with `pnpm check-architecture` and full suite with `pnpm verify`.
+1. Write sprint contract (`.harness/verification/sprint-contract.md`).
+2. Implement secure storage abstraction (`packages/mobile/src/storage.ts`).
+3. Implement pairing payload schema and validator (`packages/mobile/src/pairing.ts`).
+4. Implement `AgentClient` state machine (`packages/mobile/src/client.ts`) managing socket lifecycle, `hello` handshake, ping keepalive, and RTT measurement.
+5. Implement React components: `PairingScreen.tsx`, `StatusScreen.tsx`, and root `App.tsx`.
+6. Write integration and unit tests in `packages/mobile/src/mobile.test.ts`.
+7. Verify architecture (`pnpm check-architecture`) and full verify (`pnpm verify`).
 
 ## 5. Out of scope (parked, not built)
-- Mobile UI and QR scanner (F003).
-- Terminal PTY streaming (F004).
-- Claude Code process execution (F007).
+- Terminal PTY streaming / terminal emulator (Phase 02 / F004-F005).
+- System telemetry tiles (Phase 02 / F006).
+- Claude Code bridge (Phase 03).
 
 ## 6. New dependencies (with justification)
-- `ws` in `packages/agent` for WebSocket transport server.
-- `@types/ws` in devDependencies.
+- `react`, `react-native`, `expo`, `expo-secure-store` for Expo mobile runtime.
 
 ## 7. Risks
-- OS network interface naming differences: Tailscale interfaces can be named `tailscale0`, `utun*` with 100.x.y.z IP, or custom CGNAT range (100.64.0.0/10). Detect by both interface name patterns and 100.64.0.0/10 subnet match.
+- Platform difference in WebSockets: React Native has global `WebSocket`. Tests running in Node environment can use standard `ws` or polyfilled `WebSocket`.

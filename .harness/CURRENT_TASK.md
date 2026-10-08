@@ -1,21 +1,22 @@
 # CURRENT TASK
 
-**Feature**: F003 — Mobile skeleton + QR pairing + connect + status
-**Phase**: Phase 01 — Foundation (prove the pipe)
-**Status**: NOT STARTED (F002 PR ready for review and merge)
+**Feature**: F004 — PTY in agent (node-pty): stream output, input, resize, exit
+**Phase**: Phase 02 — Terminal & telemetry
+**Status**: NOT STARTED (F003 PR ready for review and merge)
 
 ## Exact next step
-1. In `packages/mobile`:
-   - Setup Expo project skeleton with TypeScript strict mode.
-   - Implement pairing screen with QR scanner / manual token input.
-   - Implement secure token storage (`expo-secure-store`).
-   - Implement WebSocket connection to tailnet agent host with `hello` handshake and ping keepalive.
-   - Display live Online / Offline status with RTT latency.
-2. Write unit and Maestro E2E test flows.
-3. Verify architecture and full test suite passes.
+1. In `packages/protocol`:
+   - Define protocol messages for terminal streaming: `pty.spawn`, `pty.input`, `pty.output`, `pty.resize`, `pty.exit`.
+   - Register PTY messages in `MessageRegistry` and codec.
+2. In `packages/agent`:
+   - Implement `TerminalManager` / `PtySession` using `node-pty` in adapters layer.
+   - Register message handlers in `AgentDaemon` message handler registry.
+   - Support streaming binary/text stdout/stderr, handling stdin input, window resizing, and process termination.
+3. Unit and integration tests driving interactive shell commands over WebSocket.
+4. Verify architecture (`check-architecture`) and full verify (`pnpm verify`).
 
 ## Acceptance (summary)
-See `phases/PHASE-01-FOUNDATION.md` for full criteria.
+See `phases/PHASE-02-TERMINAL.md` for full criteria.
 
 ## Definition of done
-Mobile client connects over tailnet to running agent daemon, completes handshake, displays Online status with ping RTT, gracefully handles disconnection/bad token.
+Agent spawns interactive PTY session with user shell, streams terminal output chunks over protocol envelope, accepts input and resize frames, handles exit codes cleanly, architecture and tests green.

@@ -4,7 +4,7 @@ All features across all phases, with permanent ids and status. Source of truth f
 Statuses: `NOT STARTED` · `IN PROGRESS` · `BLOCKED` · `IN REVIEW` · `COMPLETE` · `DEPRECATED`.
 Keep exactly one feature `IN PROGRESS`. Full acceptance criteria live in each `phases/PHASE-XX-*.md`.
 
-**Progress**: 3 / 12 COMPLETE (25%)
+**Progress**: 4 / 12 COMPLETE (33%)
 
 ## Phase 00 — De-risk
 - [x] **F000** — spike: headless Claude Code on subscription (no key) + interceptable permission prompt — `COMPLETE`
@@ -12,7 +12,7 @@ Keep exactly one feature `IN PROGRESS`. Full acceptance criteria live in each `p
 ## Phase 01 — Foundation (prove the pipe)
 - [x] **F001** — pnpm monorepo + `@shellmind/protocol` pure core (envelope + zod + ping/pong) + `init`/`check-architecture` scripts — `COMPLETE`
 - [x] **F002** — agent daemon + tailnet transport server + device-token auth handshake — `COMPLETE`
-- [ ] **F003** — Expo mobile skeleton + QR pairing + connect + Online/Offline status — `NOT STARTED`
+- [x] **F003** — Expo mobile skeleton + QR pairing + connect + Online/Offline status — `COMPLETE`
 
 ## Phase 02 — Terminal & telemetry
 - [ ] **F004** — PTY in agent (node-pty): stream output, input, resize, exit — `NOT STARTED`

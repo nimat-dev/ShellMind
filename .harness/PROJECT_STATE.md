@@ -3,28 +3,27 @@
 > Read this first, every session. Rewrite it for a cold reader before you stop.
 
 ## Where we are
-- **Phase**: Phase 01 — Foundation (prove the pipe)
-- **Active feature**: F002 — Agent daemon + tailnet transport + device-token auth (COMPLETE, PR review & merge pending)
-- **Overall progress**: 3 / 12 features COMPLETE (25%)
+- **Phase**: Phase 01 — Foundation (prove the pipe) — 100% COMPLETE
+- **Active feature**: F003 — Mobile skeleton + QR pairing + connect + status (COMPLETE, PR review & merge pending)
+- **Overall progress**: 4 / 12 features COMPLETE (33%)
 
 ## Last verified
 - **Date**: 2026-10-07
-- **F002 Verification**:
-  - `@shellmind/protocol`: Added `hello`, `hello.ack`, `hello.reject` messages and schemas; registered in MessageRegistry.
-  - `@shellmind/agent`:
-    - Defined `Transport`, `TransportConnection`, `TransportListener` in `src/core/transport.ts`.
-    - Defined `IDeviceRegistry`, `PairedDevice` in `src/core/device.ts`.
-    - Implemented `AgentDaemon` with `MessageHandler` registry in `src/core/daemon.ts` (pure core, no Node I/O imports).
-    - Implemented `TailnetTransportServer` in `src/adapters/transport/tailnet.ts` (refuses `0.0.0.0`, detects Tailscale CGNAT IPs `100.64.0.0/10`).
-    - Implemented `FileDeviceRegistry` in `src/adapters/storage/device-registry.ts` (SHA-256 hashed tokens, 0600 file permissions, raw tokens never written to disk).
-    - Implemented `shellmind` CLI (`pair`, `devices`, `revoke`, `dev`, `status`) in `src/cli.ts`.
-  - 25/25 unit & integration tests passing (`pnpm test`).
-  - Architecture verified clean with `dependency-cruiser` (`pnpm check-architecture`).
+- **F003 Verification**:
+  - `@shellmind/mobile`:
+    - Setup Expo mobile client skeleton with TypeScript strict mode.
+    - Implemented secure storage abstraction (`ISecureStorage`) with `MemorySecureStorage` and `ExpoSecureStoreAdapter`.
+    - Implemented pairing model & parser (`parsePairingPayload`, `PairingConfig`).
+    - Implemented `AgentClient` state machine (`disconnected`, `connecting`, `handshaking`, `online`, `error`) with `hello` handshake, automatic ping keepalive, and RTT round-trip latency tracking.
+    - Implemented React Native components: `PairingScreen.tsx`, `StatusScreen.tsx`, and root `App.tsx`.
+    - Implemented 12 comprehensive unit and integration tests (`mobile.test.ts`) against live WebSocket servers.
+  - 37/37 unit & integration tests passing across all packages (`pnpm test`).
+  - Architecture verified clean with `dependency-cruiser` (`pnpm check-architecture`, 33 modules, 68 dependencies cruised, 0 violations).
   - Full suite verified clean (`pnpm verify`).
-- **Git**: branch `feat/F002`
+- **Git**: branch `feat/F003`
 
 ## Next step
-Merge PR for F002, then begin F003: Mobile skeleton + QR pairing + connect + status on `feat/F003`.
+Merge PR for F003, concluding Phase 01 (Foundation). Begin Phase 02 (Terminal & telemetry) with F004 (`node-pty` in agent) on `feat/F004`.
 
 ## Open blockers
 See `BLOCKERS.md`. None open.
