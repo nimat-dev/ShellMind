@@ -32,6 +32,20 @@ import {
   createSysMetricsMessage,
   SysRequestMessage,
   SysMetricsMessage,
+  createAgentPromptMessage,
+  createAgentStreamMessage,
+  createAgentAbortMessage,
+  createProjectListMessage,
+  createProjectListRespMessage,
+  createProjectSetMessage,
+  createProjectSetRespMessage,
+  AgentPromptMessage,
+  AgentStreamMessage,
+  AgentAbortMessage,
+  ProjectListMessage,
+  ProjectListRespMessage,
+  ProjectSetMessage,
+  ProjectSetRespMessage,
 } from "./index.js";
 
 describe("@shellmind/protocol", () => {
@@ -357,6 +371,138 @@ describe("@shellmind/protocol", () => {
         expect(metrics.data.payload.memory.percent).toBe(50.0);
         expect(metrics.data.payload.disk?.percent).toBe(20.0);
         expect(metrics.data.payload.platform).toBe("darwin");
+      }
+    });
+
+    it("serializes and parses AgentPromptMessage", () => {
+      const original = createAgentPromptMessage(
+        { prompt: "Run vitest tests", cwd: "/Users/dev/project" },
+        { sessionId: "ses_agent_1" }
+      );
+      const res = parseMessage<AgentPromptMessage>(serializeMessage(original));
+      expect(res.success).toBe(true);
+      if (res.success) {
+        expect(res.data.type).toBe("agent.prompt");
+        expect(res.data.payload.prompt).toBe("Run vitest tests");
+        expect(res.data.payload.cwd).toBe("/Users/dev/project");
+      }
+    });
+
+    it("serializes and parses AgentStreamMessage for various event variants", () => {
+      // 1. assistant_text
+      const textMsg = createAgentStreamMessage({
+        event: { type: "assistant_text", text: "I found 3 test files." },
+      });
+      const resText = parseMessage<AgentStreamMessage>(serializeMessage(textMsg));
+      expect(resText.success).toBe(true);
+      if (resText.success) {
+        expect(resText.data.payload.event.type).toBe("assistant_text");
+        if (resText.data.payload.event.type === "assistant_text") {
+          expect(resText.data.payload.event.text).toBe("I found 3 test files.");
+        }
+      }
+
+      // 2. tool_use
+      const toolUseMsg = createAgentStreamMessage({
+        event: {
+          type: "tool_use",
+          toolName: "Bash",
+          toolUseId: "tool_123",
+          input: { command: "ls -la" },
+        },
+      });
+      const resToolUse = parseMessage<AgentStreamMessage>(serializeMessage(toolUseMsg));
+      expect(resToolUse.success).toBe(true);
+      if (resToolUse.success) {
+        expect(resToolUse.data.payload.event.type).toBe("tool_use");
+      }
+
+      // 3. tool_result
+      const toolResMsg = createAgentStreamMessage({
+        event: {
+          type: "tool_result",
+          toolUseId: "tool_123",
+          content: "file1.txt\nfile2.txt",
+          isError: false,
+        },
+      });
+      const resToolRes = parseMessage<AgentStreamMessage>(serializeMessage(toolResMsg));
+      expect(resToolRes.success).toBe(true);
+      if (resToolRes.success) {
+        expect(resToolRes.data.payload.event.type).toBe("tool_result");
+      }
+
+      // 4. done
+      const doneMsg = createAgentStreamMessage({
+        event: {
+          type: "done",
+          result: "All tasks completed.",
+          costUsd: 0.04,
+          durationMs: 1200,
+        },
+      });
+      const resDone = parseMessage<AgentStreamMessage>(serializeMessage(doneMsg));
+      expect(resDone.success).toBe(true);
+      if (resDone.success) {
+        expect(resDone.data.payload.event.type).toBe("done");
+      }
+
+      // 5. aborted
+      const abortMsg = createAgentStreamMessage({
+        event: { type: "aborted", reason: "User cancelled" },
+      });
+      const resAbort = parseMessage<AgentStreamMessage>(serializeMessage(abortMsg));
+      expect(resAbort.success).toBe(true);
+      if (resAbort.success) {
+        expect(resAbort.data.payload.event.type).toBe("aborted");
+      }
+    });
+
+    it("serializes and parses AgentAbortMessage", () => {
+      const original = createAgentAbortMessage({ reason: "Stop execution" });
+      const res = parseMessage<AgentAbortMessage>(serializeMessage(original));
+      expect(res.success).toBe(true);
+      if (res.success) {
+        expect(res.data.type).toBe("agent.abort");
+        expect(res.data.payload.reason).toBe("Stop execution");
+      }
+    });
+
+    it("serializes and parses ProjectList and ProjectListResp messages", () => {
+      const listReq = createProjectListMessage({});
+      const resReq = parseMessage<ProjectListMessage>(serializeMessage(listReq));
+      expect(resReq.success).toBe(true);
+
+      const listResp = createProjectListRespMessage({
+        currentCwd: "/workspace/ShellMind",
+        projects: [
+          { name: "ShellMind", path: "/workspace/ShellMind" },
+          { name: "MyApp", path: "/workspace/MyApp" },
+        ],
+      });
+      const resResp = parseMessage<ProjectListRespMessage>(serializeMessage(listResp));
+      expect(resResp.success).toBe(true);
+      if (resResp.success) {
+        expect(resResp.data.type).toBe("project.list.resp");
+        expect(resResp.data.payload.projects).toHaveLength(2);
+        expect(resResp.data.payload.currentCwd).toBe("/workspace/ShellMind");
+      }
+    });
+
+    it("serializes and parses ProjectSet and ProjectSetResp messages", () => {
+      const setReq = createProjectSetMessage({ cwd: "/workspace/ShellMind" });
+      const resReq = parseMessage<ProjectSetMessage>(serializeMessage(setReq));
+      expect(resReq.success).toBe(true);
+
+      const setResp = createProjectSetRespMessage({
+        success: true,
+        currentCwd: "/workspace/ShellMind",
+      });
+      const resResp = parseMessage<ProjectSetRespMessage>(serializeMessage(setResp));
+      expect(resResp.success).toBe(true);
+      if (resResp.success) {
+        expect(resResp.data.type).toBe("project.set.resp");
+        expect(resResp.data.payload.success).toBe(true);
       }
     });
   });

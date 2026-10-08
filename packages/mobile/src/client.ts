@@ -5,6 +5,10 @@ import {
   createTermInputMessage,
   createTermResizeMessage,
   createSysRequestMessage,
+  createAgentPromptMessage,
+  createAgentAbortMessage,
+  createProjectListMessage,
+  createProjectSetMessage,
   parseMessage,
   serializeMessage,
   type HelloAckMessage,
@@ -14,6 +18,12 @@ import {
   type TermExitMessage,
   type SysMetricsPayload,
   type SysMetricsMessage,
+  type AgentStreamEvent,
+  type AgentStreamMessage,
+  type ProjectListRespPayload,
+  type ProjectListRespMessage,
+  type ProjectSetRespPayload,
+  type ProjectSetRespMessage,
 } from "@shellmind/protocol";
 import type { PairingConfig } from "./pairing.js";
 
@@ -49,6 +59,9 @@ export class AgentClient {
   private terminalDataListeners: Set<(data: string) => void> = new Set();
   private terminalExitListeners: Set<(exitCode: number, signal?: number) => void> = new Set();
   private sysMetricsListeners: Set<(metrics: SysMetricsPayload) => void> = new Set();
+  private agentStreamListeners: Set<(event: AgentStreamEvent) => void> = new Set();
+  private projectListListeners: Set<(resp: ProjectListRespPayload) => void> = new Set();
+  private projectSetListeners: Set<(resp: ProjectSetRespPayload) => void> = new Set();
 
   private state: ClientState = {
     status: "disconnected",
@@ -132,6 +145,83 @@ export class AgentClient {
       { sessionId: this.state.sessionId ?? undefined }
     );
     this.socket.send(serializeMessage(msg));
+  }
+
+  public onAgentStream(listener: (event: AgentStreamEvent) => void): () => void {
+    this.agentStreamListeners.add(listener);
+    return () => {
+      this.agentStreamListeners.delete(listener);
+    };
+  }
+
+  public sendAgentPrompt(prompt: string, cwd?: string): boolean {
+    if (!this.socket || this.state.status !== "online") return false;
+    const msg = createAgentPromptMessage(
+      { prompt, cwd },
+      { sessionId: this.state.sessionId ?? undefined }
+    );
+    try {
+      this.socket.send(serializeMessage(msg));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  public abortAgent(reason?: string): boolean {
+    if (!this.socket || this.state.status !== "online") return false;
+    const msg = createAgentAbortMessage(
+      { reason },
+      { sessionId: this.state.sessionId ?? undefined }
+    );
+    try {
+      this.socket.send(serializeMessage(msg));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  public onProjectList(listener: (resp: ProjectListRespPayload) => void): () => void {
+    this.projectListListeners.add(listener);
+    return () => {
+      this.projectListListeners.delete(listener);
+    };
+  }
+
+  public requestProjectList(): boolean {
+    if (!this.socket || this.state.status !== "online") return false;
+    const msg = createProjectListMessage(
+      {},
+      { sessionId: this.state.sessionId ?? undefined }
+    );
+    try {
+      this.socket.send(serializeMessage(msg));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  public onProjectSet(listener: (resp: ProjectSetRespPayload) => void): () => void {
+    this.projectSetListeners.add(listener);
+    return () => {
+      this.projectSetListeners.delete(listener);
+    };
+  }
+
+  public setProject(cwd: string): boolean {
+    if (!this.socket || this.state.status !== "online") return false;
+    const msg = createProjectSetMessage(
+      { cwd },
+      { sessionId: this.state.sessionId ?? undefined }
+    );
+    try {
+      this.socket.send(serializeMessage(msg));
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   private updateState(partial: Partial<ClientState>): void {
@@ -311,6 +401,30 @@ export class AgentClient {
       const sysMetrics = message as SysMetricsMessage;
       for (const listener of this.sysMetricsListeners) {
         listener(sysMetrics.payload);
+      }
+      return;
+    }
+
+    if (message.type === "agent.stream") {
+      const streamMsg = message as AgentStreamMessage;
+      for (const listener of this.agentStreamListeners) {
+        listener(streamMsg.payload.event);
+      }
+      return;
+    }
+
+    if (message.type === "project.list.resp") {
+      const listResp = message as ProjectListRespMessage;
+      for (const listener of this.projectListListeners) {
+        listener(listResp.payload);
+      }
+      return;
+    }
+
+    if (message.type === "project.set.resp") {
+      const setResp = message as ProjectSetRespMessage;
+      for (const listener of this.projectSetListeners) {
+        listener(setResp.payload);
       }
       return;
     }

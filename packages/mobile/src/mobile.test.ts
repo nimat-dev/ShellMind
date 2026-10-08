@@ -9,10 +9,19 @@ import {
   createTermDataMessage,
   createTermExitMessage,
   createSysMetricsMessage,
+  createAgentStreamMessage,
+  createProjectListRespMessage,
+  createProjectSetRespMessage,
   type HelloMessage,
   type PingMessage,
   type TermInputMessage,
   type SysMetricsPayload,
+  type AgentPromptMessage,
+  type AgentAbortMessage,
+  type AgentStreamEvent,
+  type ProjectListRespPayload,
+  type ProjectSetRespPayload,
+  type ProjectSetMessage,
 } from "@shellmind/protocol";
 import { parsePairingPayload } from "./pairing.js";
 import { MemorySecureStorage, ExpoSecureStoreAdapter } from "./storage.js";
@@ -523,6 +532,232 @@ describe("Mobile Package Unit & Integration Tests", () => {
       client.requestSystemMetrics();
       await new Promise((resolve) => setTimeout(resolve, 80));
       expect(received).toHaveLength(1); // Still 1, didn't receive new one
+
+      client.disconnect();
+    });
+  });
+
+  describe("Claude Driver & Project Management Client Flow (F007)", () => {
+    let wss: WebSocketServer;
+    let serverPort: number;
+
+    beforeEach(async () => {
+      wss = new WebSocketServer({ port: 0, host: "127.0.0.1" });
+      await new Promise<void>((resolve) => wss.on("listening", () => resolve()));
+      const addr = wss.address();
+      serverPort = typeof addr === "object" && addr !== null ? addr.port : 0;
+    });
+
+    afterEach(async () => {
+      await new Promise<void>((resolve) => {
+        wss.close(() => resolve());
+      });
+    });
+
+    it("sends agent.prompt and receives streamed agent.stream events", async () => {
+      wss.on("connection", (ws) => {
+        ws.on("message", (data) => {
+          const raw = data.toString("utf-8");
+          const parsed = parseMessage(raw);
+          if (!parsed.success) return;
+
+          if (parsed.data.type === "hello") {
+            const ack = createHelloAckMessage(
+              {
+                sessionId: "ses_agent_mobile",
+                agentVersion: "0.1.0",
+                serverName: "MacBook Pro",
+              },
+              { sessionId: "ses_agent_mobile" }
+            );
+            ws.send(serializeMessage(ack));
+          } else if (parsed.data.type === "agent.prompt") {
+            const promptMsg = parsed.data as AgentPromptMessage;
+            // Send assistant text
+            const textEv = createAgentStreamMessage({
+              event: {
+                type: "assistant_text",
+                text: `Result for ${promptMsg.payload.prompt}`,
+              },
+            });
+            ws.send(serializeMessage(textEv));
+
+            // Send done event
+            const doneEv = createAgentStreamMessage({
+              event: {
+                type: "done",
+                result: "Success",
+                costUsd: 0.02,
+                durationMs: 150,
+              },
+            });
+            ws.send(serializeMessage(doneEv));
+          }
+        });
+      });
+
+      const client = new AgentClient({
+        webSocketFactory: (url) => new WsClient(url) as unknown as WebSocket,
+      });
+
+      const streamEvents: AgentStreamEvent[] = [];
+      client.onAgentStream((event) => {
+        streamEvents.push(event);
+      });
+
+      client.connect({
+        deviceId: "dev_mobile",
+        token: "tok_mobile",
+        host: "127.0.0.1",
+        port: serverPort,
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      expect(client.getState().status).toBe("online");
+
+      const sent = client.sendAgentPrompt("Audit security rules");
+      expect(sent).toBe(true);
+
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      expect(streamEvents).toHaveLength(2);
+      const firstEv = streamEvents[0];
+      expect(firstEv).toBeDefined();
+      if (firstEv && firstEv.type === "assistant_text") {
+        expect(firstEv.text).toContain("Audit security rules");
+      }
+      expect(streamEvents[1]?.type).toBe("done");
+
+      client.disconnect();
+    });
+
+    it("sends agent.abort message", async () => {
+      let receivedAbortReason: string | undefined;
+
+      wss.on("connection", (ws) => {
+        ws.on("message", (data) => {
+          const raw = data.toString("utf-8");
+          const parsed = parseMessage(raw);
+          if (!parsed.success) return;
+
+          if (parsed.data.type === "hello") {
+            ws.send(
+              serializeMessage(
+                createHelloAckMessage(
+                  {
+                    sessionId: "ses_abort_test",
+                    agentVersion: "0.1.0",
+                    serverName: "Host",
+                  },
+                  { sessionId: "ses_abort_test" }
+                )
+              )
+            );
+          } else if (parsed.data.type === "agent.abort") {
+            const abortMsg = parsed.data as AgentAbortMessage;
+            receivedAbortReason = abortMsg.payload.reason;
+          }
+        });
+      });
+
+      const client = new AgentClient({
+        webSocketFactory: (url) => new WsClient(url) as unknown as WebSocket,
+      });
+
+      client.connect({
+        deviceId: "dev_mobile",
+        token: "tok_mobile",
+        host: "127.0.0.1",
+        port: serverPort,
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      const aborted = client.abortAgent("User pressed stop");
+      expect(aborted).toBe(true);
+
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(receivedAbortReason).toBe("User pressed stop");
+
+      client.disconnect();
+    });
+
+    it("requests project list and sets active project", async () => {
+      wss.on("connection", (ws) => {
+        ws.on("message", (data) => {
+          const raw = data.toString("utf-8");
+          const parsed = parseMessage(raw);
+          if (!parsed.success) return;
+
+          if (parsed.data.type === "hello") {
+            ws.send(
+              serializeMessage(
+                createHelloAckMessage(
+                  {
+                    sessionId: "ses_proj_test",
+                    agentVersion: "0.1.0",
+                    serverName: "Host",
+                  },
+                  { sessionId: "ses_proj_test" }
+                )
+              )
+            );
+          } else if (parsed.data.type === "project.list") {
+            ws.send(
+              serializeMessage(
+                createProjectListRespMessage({
+                  currentCwd: "/workspace/ShellMind",
+                  projects: [{ name: "ShellMind", path: "/workspace/ShellMind" }],
+                })
+              )
+            );
+          } else if (parsed.data.type === "project.set") {
+            const setMsg = parsed.data as ProjectSetMessage;
+            ws.send(
+              serializeMessage(
+                createProjectSetRespMessage({
+                  success: true,
+                  currentCwd: setMsg.payload.cwd,
+                })
+              )
+            );
+          }
+        });
+      });
+
+      const client = new AgentClient({
+        webSocketFactory: (url) => new WsClient(url) as unknown as WebSocket,
+      });
+
+      let listResult: ProjectListRespPayload | null = null;
+      let setResult: ProjectSetRespPayload | null = null;
+
+      client.onProjectList((resp) => {
+        listResult = resp;
+      });
+
+      client.onProjectSet((resp) => {
+        setResult = resp;
+      });
+
+      client.connect({
+        deviceId: "dev_mobile",
+        token: "tok_mobile",
+        host: "127.0.0.1",
+        port: serverPort,
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 80));
+
+      client.requestProjectList();
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      expect(listResult).not.toBeNull();
+      expect(listResult!.currentCwd).toBe("/workspace/ShellMind");
+      expect(listResult!.projects).toHaveLength(1);
+
+      client.setProject("/workspace/OtherProject");
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      expect(setResult).not.toBeNull();
+      expect(setResult!.success).toBe(true);
+      expect(setResult!.currentCwd).toBe("/workspace/OtherProject");
 
       client.disconnect();
     });

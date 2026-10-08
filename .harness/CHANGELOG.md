@@ -18,6 +18,20 @@ Notes: <anything the next agent should know>
 
 <!-- entries go below, newest first -->
 
+## 2026-10-07 — F007 Claude driver (spawn claude -p stream-json, project cwd, abort) — COMPLETE
+Branch/commit: feat/F007
+Evidence:
+  - `pnpm test` -> 77/77 tests pass (24 protocol, 28 agent, 25 mobile)
+  - `packages/protocol/src/protocol.test.ts` -> validates `agent.prompt`, `agent.stream` (assistant_text, tool_use, tool_result, rate_limit, done, aborted, error), `agent.abort`, `project.list`, `project.set` round-trip serialization and schema validation
+  - `packages/agent/src/claude-driver.test.ts` -> 12 unit tests verifying `ClaudeStreamParser` incremental buffering, `LocalClaudeDriver` process spawning, busy lock, cancellation (`SIGINT`/`SIGKILL`), `ENOENT` handling (`CLI_NOT_FOUND`), and `NodeProjectManager` path validation
+  - `packages/agent/src/agent.test.ts` -> validates daemon routes `agent.prompt` into streaming `agent.stream` events, routes `agent.abort` cleanly, handles `project.list` & `project.set`, and protects against child process leakage on client disconnect
+  - `packages/mobile/src/mobile.test.ts` -> validates `client.sendAgentPrompt()`, `client.abortAgent()`, `client.requestProjectList()`, and `client.setProject()` dispatching over WebSocket
+  - E2E flow specification recorded in `.maestro/claude_stream_flow.yaml`
+  - `scripts/check-architecture.sh` -> 0 dependency violations across 54 modules (pure core preserved, 0 I/O imports in `src/core`)
+  - full suite: `pnpm verify` -> green (typecheck, lint, test, check-architecture)
+Evaluator: acceptance=5 correctness=5 boundaries=5 modularity=5 evidence=5 => avg 5.0 (PASS)
+Notes: Claude Code headless driver is fully operational. Supports phone-driven prompts, streaming JSONL event feeds, clean cancellation, and project switching. Ready for F008 (permission bridge, allow/deny confirm card, and audit log).
+
 ## 2026-10-07 — F006 System-info tiles (CPU / memory / disk) — COMPLETE
 Branch/commit: feat/F006
 Evidence:

@@ -8,6 +8,8 @@ import {
   FileDeviceRegistry,
   NodePtyManager,
   NodeSysInfoProvider,
+  LocalClaudeDriver,
+  NodeProjectManager,
   findTailnetInterface,
 } from "./index.js";
 
@@ -132,6 +134,8 @@ async function handleDev(args: string[]): Promise<void> {
     serverName: os.hostname(),
     terminalManager: new NodePtyManager(),
     sysInfoProvider: new NodeSysInfoProvider(),
+    claudeDriver: new LocalClaudeDriver(),
+    projectManager: new NodeProjectManager(),
   });
 
   console.log("=== ShellMind Agent Daemon ===");
