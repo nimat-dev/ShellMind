@@ -1,9 +1,11 @@
 import type { AgentStreamEvent } from "@shellmind/protocol";
+import type { IPermissionBridge } from "./permission.js";
 
 export interface ClaudeTurnOptions {
   prompt: string;
   cwd?: string;
   onEvent: (event: AgentStreamEvent) => void;
+  permissionBridge?: IPermissionBridge;
 }
 
 export interface IClaudeDriver {

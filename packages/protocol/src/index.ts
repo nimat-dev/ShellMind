@@ -7,5 +7,6 @@ export * from "./messages/terminal.js";
 export * from "./messages/sysinfo.js";
 export * from "./messages/agent.js";
 export * from "./messages/project.js";
+export * from "./messages/permission.js";
 export * from "./registry.js";
 export * from "./codec.js";

@@ -4,33 +4,35 @@
 
 ## Where we are
 - **Phase**: Phase 03 — AI (Claude Code bridge) (in progress)
-- **Active feature**: F007 — Claude driver: spawn claude -p stream-json, project cwd, abort (COMPLETE, PR review & merge pending) -> F008 next
-- **Overall progress**: 8 / 12 features COMPLETE (67%)
+- **Active feature**: F008 — Permission bridge + confirm UI + allowlist + audit log (COMPLETE, PR review & merge pending) -> F009 next
+- **Overall progress**: 9 / 12 features COMPLETE (75%)
 
 ## Last verified
-- **Date**: 2026-10-07
-- **F007 Verification**:
+- **Date**: 2026-10-08
+- **F008 Verification**:
   - `@shellmind/protocol`:
-    - Added `agent.prompt`, `agent.stream`, `agent.abort`, `project.list`, `project.set` messages and schemas in `src/messages/agent.ts` and `src/messages/project.ts`.
-    - 24/24 protocol tests passing.
+    - Added `perm.request` and `perm.response` messages in `src/messages/permission.ts`.
+    - Pure risk classification (`classifyRisk`) and allowlist evaluation (`isReadonlyCommand`).
+    - 28/28 protocol tests passing.
   - `@shellmind/agent`:
-    - Defined pure core `IClaudeDriver`, `ClaudeTurnOptions`, `IProjectManager`, `ProjectInfo` interfaces with 0 Node built-ins or I/O.
-    - Implemented `ClaudeStreamParser` in `src/adapters/claude-driver/parser.ts` with streaming line buffering and JSONL event emission.
-    - Implemented `LocalClaudeDriver` in `src/adapters/claude-driver/driver.ts` spawning `claude -p` stream-json with cancellation (`SIGINT`/`SIGKILL`), busy guard, and actionable errors.
-    - Implemented `NodeProjectManager` in `src/adapters/project/node-project.ts`.
-    - Wired message handlers into `AgentDaemon` and tested over live WebSocket server in `src/agent.test.ts`.
-    - 28/28 agent tests passing.
+    - Pure core interfaces `IPermissionBridge`, `IAuditLogger` with 0 Node builtins or I/O.
+    - Implemented `PermissionBridge` with auto-allow for safe reads, session allowlist, timeouts, idempotency, and denyAllPending.
+    - Implemented `FileAuditLogger` (atomic append-only JSONL mode 0600) written BEFORE tool execution.
+    - Intercepted stdio permission control requests in `ClaudeStreamParser` and `LocalClaudeDriver`.
+    - Wired permission handlers into `AgentDaemon` and tested live socket flows in `src/agent.test.ts`.
+    - 43/43 agent tests passing.
   - `@shellmind/mobile`:
-    - Added `sendAgentPrompt`, `abortAgent`, `onAgentStream`, `requestProjectList`, `setProject` to `AgentClient`.
-    - 25/25 mobile tests passing.
-    - Maestro flow in `.maestro/claude_stream_flow.yaml`.
-  - 77/77 tests passing monorepo-wide (`pnpm test`).
-  - Clean architecture verified with `dependency-cruiser` (`pnpm check-architecture`, 54 modules, 139 dependencies cruised, 0 violations).
+    - Added `onPermissionRequest`, `respondPermission` to `AgentClient`.
+    - Implemented accessible `PermissionCard.tsx` React Native component with risk pill and session toggle.
+    - 28/28 mobile tests passing.
+    - Maestro flow in `.maestro/permission_flow.yaml`.
+  - 99/99 tests passing monorepo-wide (`pnpm test`).
+  - Clean architecture verified with `dependency-cruiser` (`pnpm check-architecture`, 61 modules, 165 dependencies cruised, 0 violations).
   - Full suite verified clean (`pnpm verify`).
-- **Git**: branch `feat/F007`
+- **Git**: branch `feat/F008`
 
 ## Next step
-Merge PR for F007. Advance to F008 (`Permission bridge + confirm UI + allowlist + audit log`) on `feat/F008`.
+Merge PR for F008. Advance to F009 (`Chat UI (streaming) + session continuity (reconnect resumes) + project picker`) on `feat/F009`.
 
 ## Open blockers
 See `BLOCKERS.md`. None open.

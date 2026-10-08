@@ -14,6 +14,7 @@ import {
   createAgentAbortMessage,
   createProjectListMessage,
   createProjectSetMessage,
+  createPermResponseMessage,
   parseMessage,
   serializeMessage,
   type HelloAckMessage,
@@ -25,6 +26,7 @@ import {
   type AgentStreamMessage,
   type ProjectListRespMessage,
   type ProjectSetRespMessage,
+  type PermRequestMessage,
   type KnownMessage,
 } from "@shellmind/protocol";
 import {
@@ -34,6 +36,8 @@ import {
   NodePtyManager,
   NodeSysInfoProvider,
   NodeProjectManager,
+  PermissionBridge,
+  FileAuditLogger,
   type IClaudeDriver,
   type ClaudeTurnOptions,
   isTailnetIp,
@@ -49,6 +53,8 @@ describe("Agent Daemon & Transport Integration", () => {
   let serverPort: number;
   let mockClaudeDriver: IClaudeDriver;
   let projectManager: NodeProjectManager;
+  let auditLogger: FileAuditLogger;
+  let permissionBridge: PermissionBridge;
 
   beforeEach(async () => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "shellmind-agent-test-"));
@@ -58,10 +64,31 @@ describe("Agent Daemon & Transport Integration", () => {
     terminalManager = new NodePtyManager();
     const sysInfoProvider = new NodeSysInfoProvider();
     projectManager = new NodeProjectManager({ initialCwd: tmpDir });
+    const auditPath = path.join(tmpDir, "audit.log");
+    auditLogger = new FileAuditLogger({ filePath: auditPath });
+    permissionBridge = new PermissionBridge({ auditLogger });
+
     mockClaudeDriver = {
       isBusy: vi.fn().mockReturnValue(false),
       abortTurn: vi.fn().mockResolvedValue(true),
       runTurn: vi.fn().mockImplementation(async (opts: ClaudeTurnOptions) => {
+        if (opts.permissionBridge && opts.prompt.includes("dangerous")) {
+          const decision = await opts.permissionBridge.requestPermission({
+            requestId: "perm_turn_1",
+            toolName: "Bash",
+            command: "rm -rf /tmp/danger",
+            input: { command: "rm -rf /tmp/danger" },
+            cwd: tmpDir,
+            riskHint: "high",
+          });
+          if (decision === "allow") {
+            opts.onEvent({ type: "assistant_text", text: "Executed dangerous command" });
+          } else {
+            opts.onEvent({ type: "assistant_text", text: "Command denied" });
+          }
+          opts.onEvent({ type: "done", result: "Finished", costUsd: 0, durationMs: 20 });
+          return;
+        }
         opts.onEvent({ type: "assistant_text", text: `Echo: ${opts.prompt}` });
         opts.onEvent({ type: "done", result: "Done", costUsd: 0, durationMs: 50 });
       }),
@@ -74,6 +101,8 @@ describe("Agent Daemon & Transport Integration", () => {
       sysInfoProvider,
       claudeDriver: mockClaudeDriver,
       projectManager,
+      permissionBridge,
+      auditLogger,
     });
 
     const listener = await daemon.start({ host: "127.0.0.1", port: 0 });
@@ -658,6 +687,254 @@ describe("Agent Daemon & Transport Integration", () => {
       await new Promise((resolve) => setTimeout(resolve, 80));
 
       expect(mockClaudeDriver.abortTurn).toHaveBeenCalledWith("Client disconnected");
+    });
+  });
+
+  describe("Permission Bridge & Audit Trail Integration (F008)", () => {
+    it("routes perm.request to client, releases turn on perm.response allow, and audits before execution", async () => {
+      const pairing = registry.createPairing("Perm Allowed Client");
+      const ws = new WebSocket(`ws://127.0.0.1:${serverPort}`);
+
+      await new Promise<void>((resolve) => ws.on("open", () => resolve()));
+
+      const messages: string[] = [];
+      ws.on("message", (data) => messages.push(data.toString("utf-8")));
+
+      // 1. Authenticate
+      ws.send(
+        serializeMessage(
+          createHelloMessage({
+            deviceId: pairing.device.id,
+            token: pairing.rawToken,
+            clientVersion: "1.0.0",
+            platform: "ios",
+          })
+        )
+      );
+
+      await waitForMessage(
+        messages,
+        (m): m is HelloAckMessage => m.type === "hello.ack"
+      );
+
+      // 2. Prompt that requires permission
+      ws.send(
+        serializeMessage(
+          createAgentPromptMessage({
+            prompt: "Please run dangerous action",
+          })
+        )
+      );
+
+      // 3. Client receives perm.request
+      const permReqMsg = await waitForMessage(
+        messages,
+        (m): m is PermRequestMessage => m.type === "perm.request"
+      );
+
+      expect(permReqMsg.type).toBe("perm.request");
+      expect(permReqMsg.payload.requestId).toBe("perm_turn_1");
+      expect(permReqMsg.payload.riskHint).toBe("high");
+      expect(permReqMsg.payload.toolName).toBe("Bash");
+
+      // 4. Client responds with allow
+      ws.send(
+        serializeMessage(
+          createPermResponseMessage({
+            requestId: permReqMsg.payload.requestId,
+            decision: "allow",
+            rememberForSession: true,
+          })
+        )
+      );
+
+      // 5. Wait for turn to finish
+      const streamText = await waitForMessage(
+        messages,
+        (m): m is AgentStreamMessage =>
+          m.type === "agent.stream" &&
+          m.payload.event.type === "assistant_text" &&
+          m.payload.event.text.includes("Executed dangerous command")
+      );
+      expect(streamText).toBeDefined();
+
+      // 6. Verify audit log was recorded on disk
+      const entries = await auditLogger.query();
+      expect(entries.length).toBeGreaterThan(0);
+      const auditEntry = entries.find((e) => e.command === "rm -rf /tmp/danger");
+      expect(auditEntry).toBeDefined();
+      expect(auditEntry?.decision).toBe("allow");
+      expect(auditEntry?.riskHint).toBe("high");
+
+      ws.close();
+    });
+
+    it("routes perm.request to client, denies turn on perm.response deny, and audits decision", async () => {
+      const pairing = registry.createPairing("Perm Denied Client");
+      const ws = new WebSocket(`ws://127.0.0.1:${serverPort}`);
+
+      await new Promise<void>((resolve) => ws.on("open", () => resolve()));
+
+      const messages: string[] = [];
+      ws.on("message", (data) => messages.push(data.toString("utf-8")));
+
+      ws.send(
+        serializeMessage(
+          createHelloMessage({
+            deviceId: pairing.device.id,
+            token: pairing.rawToken,
+            clientVersion: "1.0.0",
+            platform: "ios",
+          })
+        )
+      );
+
+      await waitForMessage(
+        messages,
+        (m): m is HelloAckMessage => m.type === "hello.ack"
+      );
+
+      ws.send(
+        serializeMessage(
+          createAgentPromptMessage({
+            prompt: "Please run dangerous action",
+          })
+        )
+      );
+
+      const permReqMsg = await waitForMessage(
+        messages,
+        (m): m is PermRequestMessage => m.type === "perm.request"
+      );
+
+      // Client denies
+      ws.send(
+        serializeMessage(
+          createPermResponseMessage({
+            requestId: permReqMsg.payload.requestId,
+            decision: "deny",
+          })
+        )
+      );
+
+      const streamText = await waitForMessage(
+        messages,
+        (m): m is AgentStreamMessage =>
+          m.type === "agent.stream" &&
+          m.payload.event.type === "assistant_text" &&
+          m.payload.event.text.includes("Command denied")
+      );
+      expect(streamText).toBeDefined();
+
+      const entries = await auditLogger.query();
+      const auditEntry = entries.find(
+        (e) => e.command === "rm -rf /tmp/danger" && e.decision === "deny"
+      );
+      expect(auditEntry).toBeDefined();
+
+      ws.close();
+    });
+
+    it("denies pending permissions on disconnect mid-turn", async () => {
+      const pairing = registry.createPairing("Disconnect Mid Perm Client");
+      const ws = new WebSocket(`ws://127.0.0.1:${serverPort}`);
+
+      await new Promise<void>((resolve) => ws.on("open", () => resolve()));
+
+      const messages: string[] = [];
+      ws.on("message", (data) => messages.push(data.toString("utf-8")));
+
+      ws.send(
+        serializeMessage(
+          createHelloMessage({
+            deviceId: pairing.device.id,
+            token: pairing.rawToken,
+            clientVersion: "1.0.0",
+            platform: "ios",
+          })
+        )
+      );
+
+      await waitForMessage(
+        messages,
+        (m): m is HelloAckMessage => m.type === "hello.ack"
+      );
+
+      ws.send(
+        serializeMessage(
+          createAgentPromptMessage({
+            prompt: "Please run dangerous action",
+          })
+        )
+      );
+
+      // Wait for perm.request
+      await waitForMessage(
+        messages,
+        (m): m is PermRequestMessage => m.type === "perm.request"
+      );
+
+      expect(permissionBridge.hasPendingRequests()).toBe(true);
+
+      // Abruptly disconnect
+      ws.close();
+      await new Promise((resolve) => setTimeout(resolve, 80));
+
+      expect(permissionBridge.hasPendingRequests()).toBe(false);
+      expect(mockClaudeDriver.abortTurn).toHaveBeenCalledWith("Client disconnected");
+    });
+
+    it("revoked device mid-session denies pending prompts and rejects requests", async () => {
+      const pairing = registry.createPairing("Revoke Mid Session Client");
+      const ws = new WebSocket(`ws://127.0.0.1:${serverPort}`);
+
+      await new Promise<void>((resolve) => ws.on("open", () => resolve()));
+
+      const messages: string[] = [];
+      ws.on("message", (data) => messages.push(data.toString("utf-8")));
+
+      ws.send(
+        serializeMessage(
+          createHelloMessage({
+            deviceId: pairing.device.id,
+            token: pairing.rawToken,
+            clientVersion: "1.0.0",
+            platform: "ios",
+          })
+        )
+      );
+
+      await waitForMessage(
+        messages,
+        (m): m is HelloAckMessage => m.type === "hello.ack"
+      );
+
+      // Revoke the device while session is open
+      await registry.revokeDevice(pairing.device.id);
+
+      // Send a message after revocation
+      ws.send(
+        serializeMessage(
+          createAgentPromptMessage({
+            prompt: "Should be rejected",
+          })
+        )
+      );
+
+      await new Promise((resolve) => setTimeout(resolve, 80));
+
+      // Socket should receive error REVOKED and close
+      const errorMsg = messages
+        .map((m) => {
+          try {
+            return JSON.parse(m);
+          } catch {
+            return null;
+          }
+        })
+        .find((m) => m && m.type === "error" && m.payload?.code === "REVOKED");
+
+      expect(errorMsg).toBeDefined();
     });
   });
 });

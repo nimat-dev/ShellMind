@@ -20,6 +20,8 @@ import {
   type AgentPromptMessage,
   type AgentAbortMessage,
   type ProjectSetMessage,
+  type PermResponseMessage,
+  createPermRequestMessage,
   type KnownMessage,
 } from "@shellmind/protocol";
 import type { TransportServer, TransportConnection, TransportListener } from "./transport.js";
@@ -28,6 +30,8 @@ import type { ITerminalManager, ITerminalSession } from "./terminal.js";
 import type { ISysInfoProvider } from "./sysinfo.js";
 import type { IClaudeDriver } from "./claude.js";
 import type { IProjectManager } from "./project.js";
+import type { IPermissionBridge } from "./permission.js";
+import type { IAuditLogger } from "./audit.js";
 
 export interface AgentDaemonConfig {
   agentVersion: string;
@@ -36,6 +40,8 @@ export interface AgentDaemonConfig {
   sysInfoProvider?: ISysInfoProvider;
   claudeDriver?: IClaudeDriver;
   projectManager?: IProjectManager;
+  permissionBridge?: IPermissionBridge;
+  auditLogger?: IAuditLogger;
 }
 
 export interface AuthenticatedSession {
@@ -195,6 +201,17 @@ export class AgentDaemon {
       }
     });
 
+    this.registerHandler("perm.response", async (message, _ctx) => {
+      if (this.config.permissionBridge) {
+        const permResp = message as PermResponseMessage;
+        this.config.permissionBridge.resolveRequest(
+          permResp.payload.requestId,
+          permResp.payload.decision,
+          permResp.payload.rememberForSession
+        );
+      }
+    });
+
     this.registerHandler("agent.prompt", async (message, ctx) => {
       if (!this.config.claudeDriver) {
         await ctx.send(
@@ -207,11 +224,32 @@ export class AgentDaemon {
       }
 
       const promptMsg = message as AgentPromptMessage;
-      const targetCwd = promptMsg.payload.cwd ?? (this.config.projectManager ? this.config.projectManager.getCurrentCwd() : undefined);
+      const targetCwd =
+        promptMsg.payload.cwd ??
+        (this.config.projectManager ? this.config.projectManager.getCurrentCwd() : undefined);
+
+      if (this.config.permissionBridge) {
+        const bridge = this.config.permissionBridge as {
+          setContext?: (deviceId?: string, sessionId?: string) => void;
+          setSendHandler?: (fn: (req: unknown) => void) => void;
+        };
+        if (typeof bridge.setContext === "function") {
+          bridge.setContext(ctx.session.device.id, ctx.session.sessionId);
+        }
+        if (typeof bridge.setSendHandler === "function") {
+          bridge.setSendHandler(async (req: unknown) => {
+            const permMsg = createPermRequestMessage(req as Parameters<typeof createPermRequestMessage>[0], {
+              sessionId: ctx.session.sessionId,
+            });
+            await ctx.send(permMsg);
+          });
+        }
+      }
 
       await this.config.claudeDriver.runTurn({
         prompt: promptMsg.payload.prompt,
         cwd: targetCwd,
+        permissionBridge: this.config.permissionBridge,
         onEvent: async (event) => {
           const streamMsg = createAgentStreamMessage(
             { event },
@@ -223,6 +261,9 @@ export class AgentDaemon {
     });
 
     this.registerHandler("agent.abort", async (message, _ctx) => {
+      if (this.config.permissionBridge) {
+        this.config.permissionBridge.denyAllPending("Turn aborted by user");
+      }
       if (!this.config.claudeDriver) {
         return;
       }
@@ -298,6 +339,10 @@ export class AgentDaemon {
       await this.config.claudeDriver.abortTurn("Daemon stopping");
     }
 
+    if (this.config.permissionBridge) {
+      this.config.permissionBridge.denyAllPending("Daemon stopping");
+    }
+
     for (const session of this.activeSessions.values()) {
       await session.connection.close(1000, "Server shutting down");
     }
@@ -327,6 +372,10 @@ export class AgentDaemon {
         }
         if (this.config.claudeDriver) {
           void this.config.claudeDriver.abortTurn("Client disconnected");
+        }
+        if (this.config.permissionBridge) {
+          this.config.permissionBridge.denyAllPending("Client disconnected");
+          this.config.permissionBridge.clearSessionAllowlist();
         }
         this.activeSessions.delete(state.session.sessionId);
       }
@@ -441,6 +490,20 @@ export class AgentDaemon {
     session: AuthenticatedSession,
     message: KnownMessage
   ): Promise<void> {
+    const currentDevice = await this.registry.getDevice(session.device.id);
+    if (!currentDevice || currentDevice.revokedAt) {
+      if (this.config.permissionBridge) {
+        this.config.permissionBridge.denyAllPending("Device revoked");
+      }
+      const err = createErrorMessage({
+        code: "REVOKED",
+        message: "Device pairing has been revoked",
+      });
+      await conn.send(serializeMessage(err));
+      await conn.close(4004, "Revoked device");
+      return;
+    }
+
     const handler = this.handlers.get(message.type);
     if (handler) {
       await handler(message, {

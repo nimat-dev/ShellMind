@@ -29,6 +29,10 @@ import {
   ProjectSetMessage,
   ProjectSetRespMessage,
 } from "./messages/project.js";
+import {
+  PermRequestMessage,
+  PermResponseMessage,
+} from "./messages/permission.js";
 
 /** Max permitted serialized message length in bytes (1 MB default) */
 export const DEFAULT_MAX_MESSAGE_BYTES = 1024 * 1024; // 1 MB
@@ -53,7 +57,9 @@ export type KnownMessage =
   | ProjectListMessage
   | ProjectListRespMessage
   | ProjectSetMessage
-  | ProjectSetRespMessage;
+  | ProjectSetRespMessage
+  | PermRequestMessage
+  | PermResponseMessage;
 
 export type ProtocolErrorCode =
   | "ERR_MALFORMED_JSON"

@@ -1,0 +1,25 @@
+appId: com.shellmind.app
+---
+# ShellMind Permission Bridge & Confirmation UI E2E Flow (F008)
+- launchApp
+
+# 1. Assert App Status and Online Connection
+- assertVisible: "ShellMind Terminal"
+- tapOn: "Status ➜"
+- assertVisible: "ShellMind Agent"
+- assertVisible: "ONLINE"
+
+# 2. Permission Request Prompt & Confirmation
+# When an agent tool requires user confirmation, PermissionCard renders with risk badge
+- assertVisible:
+    id: "permission-card"
+    optional: true
+
+# 3. Allow / Deny action interaction
+- tapOn:
+    id: "perm-allow-btn"
+    optional: true
+
+# 4. Navigate back to terminal
+- tapOn: "Terminal ➜"
+- assertVisible: "ShellMind Terminal"

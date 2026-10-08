@@ -46,6 +46,12 @@ import {
   PROJECT_SET_RESP_MESSAGE_TYPE,
   ProjectSetRespMessageSchema,
 } from "./messages/project.js";
+import {
+  PERM_REQUEST_MESSAGE_TYPE,
+  PermRequestMessageSchema,
+  PERM_RESPONSE_MESSAGE_TYPE,
+  PermResponseMessageSchema,
+} from "./messages/permission.js";
 
 export type AnyMessageSchema = z.ZodTypeAny;
 
@@ -74,6 +80,8 @@ export class MessageRegistry {
     this.register(PROJECT_LIST_RESP_MESSAGE_TYPE, ProjectListRespMessageSchema);
     this.register(PROJECT_SET_MESSAGE_TYPE, ProjectSetMessageSchema);
     this.register(PROJECT_SET_RESP_MESSAGE_TYPE, ProjectSetRespMessageSchema);
+    this.register(PERM_REQUEST_MESSAGE_TYPE, PermRequestMessageSchema);
+    this.register(PERM_RESPONSE_MESSAGE_TYPE, PermResponseMessageSchema);
   }
 
   public static getInstance(): MessageRegistry {

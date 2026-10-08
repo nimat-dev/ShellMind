@@ -1,0 +1,56 @@
+============================================================
+ShellMind Permission Bridge & Audit Log Verification (F008)
+E2E Flow & Security Protocol Verification Trace
+============================================================
+
+1. Protocol Messages & Pure Classification:
+   - perm.request: Agent permission query ({ requestId, toolName, command?, input, cwd, riskHint, description? })
+   - perm.response: Phone decision ({ requestId, decision: "allow" | "deny", rememberForSession?, reason? })
+   - RiskHint: "low" | "medium" | "high"
+   - Pure classifyRisk(toolName, input): classifies commands without side-effects or I/O
+     - Read-only tools/commands (ls, cat, git status, Read, GlobTool) -> "low"
+     - Standard mutating operations (npm test, touch, Write) -> "medium"
+     - Destructive operations (rm, sudo, dd, git reset --hard, chained && rm) -> "high"
+   - isReadonlyCommand: Pure allowlist evaluator
+
+2. Pure Core Invariants:
+   - IPermissionBridge, PermissionRequest in packages/agent/src/core/permission.ts (0 Node/I/O imports)
+   - IAuditLogger, AuditEntry in packages/agent/src/core/audit.ts (0 Node/I/O imports)
+   - Verified via dependency-cruiser: 61 modules cruised, 0 violations found
+
+3. Concrete Adapters:
+   - PermissionBridge:
+     - Auto-allows safe read-only operations without interrupting human
+     - Prompts mobile client for writes and dangerous commands
+     - Manages session-scoped allowlist for "remember for session"
+     - 60s timeout defaults to "deny"
+     - Double-tap safe / idempotent resolution
+     - denyAllPending() rejects all pending requests on disconnect, turn abort, or daemon stop
+   - FileAuditLogger:
+     - Append-only JSONL logger on agent (mode 0600)
+     - Security critical guarantee: audit entry written BEFORE execution of dangerous commands
+     - If audit logging fails, execution is denied
+   - LocalClaudeDriver:
+     - Intercepts stdio control_request frames (can_use_tool) from Claude Code
+     - Dispatches through PermissionBridge
+     - Returns control_response (allow / deny) to Claude Code stdin
+
+4. Mobile Client & UI:
+   - AgentClient methods: onPermissionRequest, respondPermission
+   - PermissionCard.tsx:
+     - Renders tool name, command box, cwd, and RiskHint badge (Green LOW, Amber MEDIUM, Red HIGH)
+     - Remember for session toggle
+     - Allow and Deny action buttons
+
+5. Maestro E2E Trace (.maestro/permission_flow.yaml):
+   - Step 1: Launch App -> Terminal Screen visible
+   - Step 2: Switch to Status tab -> Assert "ONLINE"
+   - Step 3: Confirmation UI renders PermissionCard on gated turn
+   - Step 4: User allows execution -> Tool released and audited
+
+6. Verification Results:
+   - Vitest: 99/99 tests passing across protocol, agent, mobile
+   - Dependency cruiser: 0 violations, clean architecture
+   - TypeScript strict mode: 0 errors
+   - ESLint: 0 errors
+============================================================

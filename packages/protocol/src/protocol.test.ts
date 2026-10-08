@@ -46,6 +46,12 @@ import {
   ProjectListRespMessage,
   ProjectSetMessage,
   ProjectSetRespMessage,
+  createPermRequestMessage,
+  createPermResponseMessage,
+  PermRequestMessage,
+  PermResponseMessage,
+  classifyRisk,
+  isReadonlyCommand,
 } from "./index.js";
 
 describe("@shellmind/protocol", () => {
@@ -504,6 +510,77 @@ describe("@shellmind/protocol", () => {
         expect(resResp.data.type).toBe("project.set.resp");
         expect(resResp.data.payload.success).toBe(true);
       }
+    });
+
+    it("serializes and parses PermRequest and PermResponse messages", () => {
+      const permReq = createPermRequestMessage({
+        requestId: "perm_1",
+        toolName: "Bash",
+        command: "rm -rf /tmp/test",
+        input: { command: "rm -rf /tmp/test" },
+        cwd: "/workspace/ShellMind",
+        riskHint: "high",
+        description: "Delete temporary directory",
+      });
+      const resReq = parseMessage<PermRequestMessage>(serializeMessage(permReq));
+      expect(resReq.success).toBe(true);
+      if (resReq.success) {
+        expect(resReq.data.type).toBe("perm.request");
+        expect(resReq.data.payload.requestId).toBe("perm_1");
+        expect(resReq.data.payload.riskHint).toBe("high");
+      }
+
+      const permResp = createPermResponseMessage({
+        requestId: "perm_1",
+        decision: "allow",
+        rememberForSession: true,
+      });
+      const resResp = parseMessage<PermResponseMessage>(serializeMessage(permResp));
+      expect(resResp.success).toBe(true);
+      if (resResp.success) {
+        expect(resResp.data.type).toBe("perm.response");
+        expect(resResp.data.payload.decision).toBe("allow");
+        expect(resResp.data.payload.rememberForSession).toBe(true);
+      }
+    });
+
+    describe("Permission Risk Classification & Readonly Detection", () => {
+      it("correctly classifies safe read-only commands as low risk", () => {
+        expect(classifyRisk("Bash", { command: "ls -la" }).riskHint).toBe("low");
+        expect(classifyRisk("Bash", { command: "pwd" }).riskHint).toBe("low");
+        expect(classifyRisk("Bash", { command: "git status" }).riskHint).toBe("low");
+        expect(classifyRisk("Bash", { command: "git diff" }).riskHint).toBe("low");
+        expect(classifyRisk("Bash", { command: "git log -n 5" }).riskHint).toBe("low");
+        expect(classifyRisk("Bash", { command: "cat file.txt" }).riskHint).toBe("low");
+        expect(classifyRisk("Read", { file_path: "foo.ts" }).riskHint).toBe("low");
+        expect(classifyRisk("GlobTool", { pattern: "*.ts" }).riskHint).toBe("low");
+        expect(classifyRisk("GrepTool", { pattern: "test" }).riskHint).toBe("low");
+
+        expect(isReadonlyCommand("Bash", { command: "git status" })).toBe(true);
+        expect(isReadonlyCommand("Read", { file_path: "foo.ts" })).toBe(true);
+      });
+
+      it("classifies destructive commands as high risk", () => {
+        expect(classifyRisk("Bash", { command: "rm -rf /" }).riskHint).toBe("high");
+        expect(classifyRisk("Bash", { command: "sudo rm file" }).riskHint).toBe("high");
+        expect(classifyRisk("Bash", { command: "git reset --hard" }).riskHint).toBe("high");
+        expect(classifyRisk("Bash", { command: "git clean -fd" }).riskHint).toBe("high");
+        expect(classifyRisk("Bash", { command: "git push -f origin main" }).riskHint).toBe("high");
+        expect(classifyRisk("Bash", { command: "echo hello && rm -rf foo" }).riskHint).toBe("high");
+        expect(classifyRisk("Bash", { command: "echo $(rm foo)" }).riskHint).toBe("high");
+
+        expect(isReadonlyCommand("Bash", { command: "rm -rf /" })).toBe(false);
+      });
+
+      it("classifies standard mutating commands as medium risk", () => {
+        expect(classifyRisk("Bash", { command: "npm test" }).riskHint).toBe("medium");
+        expect(classifyRisk("Bash", { command: "touch newfile.ts" }).riskHint).toBe("medium");
+        expect(classifyRisk("Write", { file_path: "foo.ts", content: "bar" }).riskHint).toBe("medium");
+        expect(classifyRisk("Edit", { file_path: "foo.ts" }).riskHint).toBe("medium");
+        expect(classifyRisk("SomeCustomTool", {}).riskHint).toBe("medium");
+
+        expect(isReadonlyCommand("Write", {})).toBe(false);
+      });
     });
   });
 });

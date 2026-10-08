@@ -1,66 +1,75 @@
-# Sprint Contract — F007: Claude driver (stream-json, project cwd, abort)
+# Sprint Contract — F008: Permission bridge + confirm UI + allowlist + audit log
 
-Feature: F007 — Claude driver: spawn `claude -p` stream-json, parse → protocol, switchable project cwd
+Feature: F008 — Permission bridge + confirm UI + allowlist + audit log
 Phase: Phase 03 — AI (Claude Code bridge)
-Date: 2026-10-07
+Date: 2026-10-08
 
 ## 1. Scope & Acceptance Criteria
 - [x] Wire protocol messages in `@shellmind/protocol`:
-  - `agent.prompt`: Client prompt payload (`prompt: string`, `cwd?: string`).
-  - `agent.stream`: Stream frame (`event: AgentStreamEvent` where event is `assistant_text`, `tool_use`, `tool_result`, `rate_limit`, `done`, `aborted`, `error`).
-  - `agent.abort`: Client request to abort the current turn.
-  - `project.list` & `project.list.resp`: List known project directories.
-  - `project.set` & `project.set.resp`: Switch active project cwd.
+  - `RiskHint` enum: `"low" | "medium" | "high"`.
+  - `classifyRisk()` pure function: detects read-only operations ("low"), modifications ("medium"), and destructive/dangerous patterns ("high").
+  - `isReadonlyCommand()` pure allowlist checker.
+  - `perm.request`: Agent permission query (`requestId`, `toolName`, `command`, `input`, `cwd`, `riskHint`, `description`).
+  - `perm.response`: Phone permission decision (`requestId`, `decision: "allow" | "deny"`, `rememberForSession?: boolean`).
 - [x] Pure core interfaces in `@shellmind/agent`:
-  - `IClaudeDriver`, `ClaudeTurnOptions`, `ClaudeStreamEvent` in `src/core/claude.ts`.
-  - `IProjectManager`, `ProjectInfo` in `src/core/project.ts`.
+  - `IPermissionBridge`, `PermissionRequest`, `PermissionDecision` in `src/core/permission.ts`.
+  - `IAuditLogger`, `AuditEntry` in `src/core/audit.ts`.
   - Pure core contains 0 Node builtins or I/O imports (`check-architecture.sh` enforced).
-- [x] Concrete adapter in `@shellmind/agent`:
-  - `src/adapters/claude-driver/driver.ts` spawning `claude -p <prompt> --output-format stream-json --verbose` with child process lifecycle management.
-  - Incremental line buffer stream parser converting JSONL into `ClaudeStreamEvent`.
-  - Clean abort (`SIGINT`/`SIGTERM`) killing child process without zombies or orphans.
-  - Typed, actionable errors when `claude` is not found, not logged in, or exits abnormally.
-  - `src/adapters/project/project-manager.ts` safely listing and validating cwd directories.
-- [x] Daemon message routing in `packages/agent/src/core/daemon.ts`:
-  - Handles `agent.prompt` and streams `agent.stream` messages back to the active session.
-  - Handles `agent.abort` and terminates in-flight turn.
-  - Handles `project.list` and `project.set`.
-- [x] Mobile client methods in `packages/mobile/src/client.ts`:
-  - `sendAgentPrompt(prompt: string, cwd?: string)`
-  - `abortAgent()`
-  - `onAgentStream(callback)`
-  - `listProjects()`, `setProject(cwd: string)`
-- [x] Edge cases covered:
-  - Claude CLI not installed or missing in PATH -> actionable error event.
-  - Malformed JSONL line in stream -> skipped/tolerated without crash.
-  - Abort mid-stream or mid-tool -> child process killed cleanly, `aborted` event dispatched.
-  - Very large output / rapid stream chunks -> buffer handles incremental chunks cleanly.
-  - Empty prompt -> rejected before spawning process.
-  - Disconnect during active turn -> child process terminated immediately (no orphan child).
+- [x] Concrete adapters in `@shellmind/agent`:
+  - `PermissionBridge` in `src/adapters/permission/bridge.ts`:
+    - Handles pending permission request promises.
+    - Applies auto-allowlist for pure read-only commands without interrupting the human.
+    - Manages session-scoped allowlist for "remember for session".
+    - Enforces timeout (e.g. 60s -> default deny).
+    - Idempotent resolution (double-tap safe).
+    - `denyAllPending()` on disconnect, abort, or device revocation.
+  - `FileAuditLogger` in `src/adapters/audit/file-audit.ts`:
+    - Append-only file logger written **before** execution of any approved tool/command.
+    - Stores `ts`, `deviceId`, `sessionId`, `toolName`, `command`, `decision`, `riskHint`.
+    - Never truncated.
+  - Integration with `LocalClaudeDriver` and `AgentDaemon`:
+    - Hooks into Claude Code's control requests (`can_use_tool`).
+    - Dispatches `perm.request` over the wire.
+- [x] Mobile client & UI in `@shellmind/mobile`:
+  - `AgentClient` methods: `onPermissionRequest()`, `respondPermission()`.
+  - `PermissionCard.tsx` React Native component:
+    - Displays tool name, command / input, cwd, and risk hint pill (Green for LOW, Amber for MEDIUM, Red for HIGH).
+    - Allow / Deny buttons and "Remember for session" checkbox.
+- [x] Edge cases covered (from `verification/edge-cases.md`):
+  - Chained / obfuscated commands (`a && rm -rf`, `$(...)`, aliases) -> flagged HIGH risk.
+  - Timeout -> treated as deny.
+  - Client disconnects mid-prompt -> all pending prompts denied + turn aborted.
+  - Double-tap allow -> idempotent.
+  - "Remember for session" -> scoped to session only, resets on next connection.
+  - Revoked device mid-session -> all pending prompts denied immediately.
+  - Audit log -> append-only, never truncated, written before execution.
 - [x] Architecture boundaries: pure core contains 0 I/O; `check-architecture.sh` reports 0 violations.
 - [x] Full verification suite passing (`pnpm verify`).
 
 ## 2. Edge cases & failure paths (from `verification/edge-cases.md`)
-- `claude` not installed / not logged in -> typed actionable error, never unhandled exception.
-- Malformed JSONL line from Claude Code -> logged and ignored, parser keeps running.
-- Abort mid-tool execution -> kills subprocess immediately, releases turn lock.
-- Empty or whitespace prompt -> validation error before spawn.
-- Process crash / non-zero exit code without result -> surfaces `error` stream event, no zombie.
-- Session disconnect while prompt running -> process killed immediately.
+- Command chaining with dangerous operations (`echo hi && rm -rf /`) -> classifier marks HIGH risk.
+- Permission request timeout -> automatically resolved to "deny".
+- Disconnect during pending permission -> all pending requests rejected, child process killed.
+- Duplicate `perm.response` -> second response ignored gracefully (idempotent).
+- Audit log write failure -> surfaces error, does not run tool without audit record.
+- Device revocation while permission pending -> denies pending immediately.
 
 ## 3. E2E scenario(s)
-1. Agent receives `agent.prompt` with "list files".
-2. Claude driver spawns `claude -p` stream-json in project directory.
-3. Stream parser emits `assistant_text`, `tool_use`, `tool_result`, `done`.
-4. Mobile receives `agent.stream` events.
-5. In-flight `agent.abort` cleanly kills child process and emits `aborted`.
+1. Claude Code turn triggers tool use requiring permission.
+2. Agent evaluates allowlist:
+   - If read-only command in allowlist -> auto-approved and audited.
+   - If write/destructive -> routes `perm.request` to mobile.
+3. Mobile renders `PermissionCard` with tool, command, and RiskHint badge.
+4. User taps "Allow" (or "Deny") -> `perm.response` sent to agent.
+5. Agent records to append-only audit log before releasing tool to execute.
+6. Mobile receives stream output.
 
 ## 4. Plan (thinnest vertical slice)
-1. Protocol schemas in `packages/protocol/src/messages/agent.ts` and `project.ts`.
-2. Pure core interfaces in `packages/agent/src/core/claude.ts` and `src/core/project.ts`.
-3. Stream parser and Claude driver adapter in `packages/agent/src/adapters/claude-driver/`.
-4. Project manager adapter in `packages/agent/src/adapters/project/`.
-5. Wire into `AgentDaemon` and tests in `src/agent.test.ts`.
-6. Mobile client methods in `packages/mobile/src/client.ts` and tests in `src/mobile.test.ts`.
-7. E2E flow specification in `.maestro/claude_stream_flow.yaml`.
-8. Architecture check and full verify (`pnpm verify`).
+1. Protocol schemas in `packages/protocol/src/messages/permission.ts` & risk classifier.
+2. Core interfaces in `packages/agent/src/core/permission.ts` and `src/core/audit.ts`.
+3. Adapters in `packages/agent/src/adapters/permission/bridge.ts` and `src/adapters/audit/file-audit.ts`.
+4. Integration with `LocalClaudeDriver` and `AgentDaemon`.
+5. Mobile client methods in `packages/mobile/src/client.ts` and `PermissionCard.tsx` UI.
+6. Comprehensive test battery (protocol, driver, daemon, mobile).
+7. Maestro flow in `.maestro/permission_flow.yaml`.
+8. Full verification (`pnpm verify`) and PR review/merge.
